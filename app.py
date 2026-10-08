@@ -557,30 +557,43 @@ def toggle_mode():
     return jsonify({"status": "error", "message": "Invalid mode"}), 400
 
 
+def start_background_bot():
+    """Starts the trading scanner loop in background (works for both local & WSGI servers)."""
+    if not getattr(app, "_bot_started", False):
+        app._bot_started = True
+        t = threading.Thread(target=bot_worker_loop, daemon=True)
+        t.start()
+        print("[TRADING BOT] Background market scanner loop started successfully.")
+
+
+# Auto-start for WSGI servers (Gunicorn / Render / Railway / Cloud)
+start_background_bot()
+
+
 def open_browser():
-    """Opens Google Chrome after 1.5 seconds."""
+    """Opens Google Chrome after 1.5 seconds if running locally."""
     time.sleep(1.5)
-    print("\n[CHROME LAUNCHER] Opening F&O Chrome Login Terminal at: http://127.0.0.1:5000/login\n")
+    port = int(os.environ.get("PORT", 5000))
+    print(f"\n[CHROME LAUNCHER] Opening F&O Chrome Login Terminal at: http://127.0.0.1:{port}/login\n")
     try:
-        webbrowser.open("http://127.0.0.1:5000/login")
+        webbrowser.open(f"http://127.0.0.1:{port}/login")
     except Exception as e:
-        print(f"[CHROME LAUNCHER] Error opening browser: {e}")
+        print(f"[CHROME LAUNCHER] Note: {e}")
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 65)
     print("   GROWW FUTURES & OPTIONS (F&O) TRADING BOT - CHROME TERMINAL")
     print(f"   Groww Account: UCC {groww_profile.get('ucc', '6629599909')}")
     print(f"   Segment: NSE F&O (NIFTY & BANKNIFTY Options)")
     print(f"   Mode: {config.TRADING_MODE}")
-    print("   Login URL: http://127.0.0.1:5000/login")
+    print(f"   Terminal URL: http://127.0.0.1:{port}/login")
     print("   Default Credentials: admin / groww123")
     print("=" * 65)
 
-    bot_thread = threading.Thread(target=bot_worker_loop, daemon=True)
-    bot_thread.start()
+    if os.environ.get("AUTO_OPEN_BROWSER", "true").lower() == "true":
+        browser_thread = threading.Thread(target=open_browser, daemon=True)
+        browser_thread.start()
 
-    browser_thread = threading.Thread(target=open_browser, daemon=True)
-    browser_thread.start()
-
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
