@@ -788,21 +788,45 @@ class NiftyScalpStrategyEngine:
         sl_spot = spot
         active_sl_pts = self.sl_pts
 
-        # Strict Confluence Verification per Section 6 (CALL) & Section 7 (PUT)
+        # Point 8: Core Trade Sequence Verification (Per Strategy PDF Point 8)
+        # Deterministic Sequence: Trend -> Important Level -> Pullback -> Candle Confirmation -> Order-Flow -> Entry
+        enforce_seq = getattr(config, "ENFORCE_CORE_TRADE_SEQUENCE", True)
+
+        # 1. Bullish Sequence Gates (for CALL / CE)
+        bull_seq_trend = (trend_5m["bias"] == "BULLISH") and vwap_bull
+        bull_seq_level = (levels_analysis["distance"] <= 20.0) or (levels_analysis["score_bull"] >= 10)
+        bull_seq_pullback = exec_1m["bull_pullback"] or exec_1m["bull_cross"] or (spot <= exec_1m["ema9"] + 15.0)
+        bull_seq_candle = bool(candle.get("bullish_candle_confirmed") or candle.get("break_prev_high"))
+        bull_seq_of = (delta > 0) or (imb >= 1.15) or exec_1m["volume_confirmed"]
+
+        call_seq_valid = (
+            (bull_seq_trend and bull_seq_level and bull_seq_pullback and bull_seq_candle and bull_seq_of)
+            if enforce_seq else True
+        )
+
+        # 2. Bearish Sequence Gates (for PUT / PE)
+        bear_seq_trend = (trend_5m["bias"] == "BEARISH") and vwap_bear
+        bear_seq_level = (levels_analysis["distance"] <= 20.0) or (levels_analysis["score_bear"] >= 10)
+        bear_seq_pullback = exec_1m["bear_pullback"] or exec_1m["bear_cross"] or (spot >= exec_1m["ema9"] - 15.0)
+        bear_seq_candle = bool(candle.get("bearish_candle_confirmed") or candle.get("break_prev_low"))
+        bear_seq_of = (delta < 0) or (imb <= 0.85) or exec_1m["volume_confirmed"]
+
+        put_seq_valid = (
+            (bear_seq_trend and bear_seq_level and bear_seq_pullback and bear_seq_candle and bear_seq_of)
+            if enforce_seq else True
+        )
+
+        # Strict Confluence Verification with Point 8 Sequence Gates
         call_eligible = (
             bull_score >= CONFLUENCE_THRESHOLD
             and bull_score > (bear_score + 15)
-            and vwap_bull
-            and trend_5m["bias"] == "BULLISH"
-            and (candle.get("bullish_candle_confirmed") or candle.get("break_prev_high"))
+            and call_seq_valid
         )
 
         put_eligible = (
             bear_score >= CONFLUENCE_THRESHOLD
             and bear_score > (bull_score + 15)
-            and vwap_bear
-            and trend_5m["bias"] == "BEARISH"
-            and (candle.get("bearish_candle_confirmed") or candle.get("break_prev_low"))
+            and put_seq_valid
         )
 
         if call_eligible:
@@ -818,10 +842,9 @@ class NiftyScalpStrategyEngine:
             sl_spot = round(spot - active_sl_pts, 2)
 
             reason = (
-                f"SCALP BUY CALL (CE) [Confluence: {final_confluence}%]: "
-                f"5m Trend {trend_5m['bias']} | Spot > VWAP ({vwap}) | "
-                f"Candle: {candle.get('summary', 'CONFIRMED')} (High Break: {candle.get('prev_high', spot)}) | "
-                f"Delta: +{delta:,} (Imb: {imb}x) | {levels_analysis['reaction_type']} | "
+                f"SCALP BUY CALL (CE) [Confluence: {final_confluence}% | Sequence: COMPLETE]: "
+                f"Trend {trend_5m['bias']} -> Level ({levels_analysis['nearest_level_name']}) -> Pullback -> "
+                f"Candle ({candle.get('summary', 'CONFIRMED')}) -> Order-Flow (+{delta:,}) | "
                 f"Targets: +{self.target_min_pts:g} to +{self.target_max_pts:g} pts (Structural SL: -{active_sl_pts:g} pts)"
             )
 
@@ -838,18 +861,18 @@ class NiftyScalpStrategyEngine:
             sl_spot = round(spot + active_sl_pts, 2)
 
             reason = (
-                f"SCALP BUY PUT (PE) [Confluence: {final_confluence}%]: "
-                f"5m Trend {trend_5m['bias']} | Spot < VWAP ({vwap}) | "
-                f"Candle: {candle.get('summary', 'CONFIRMED')} (Low Break: {candle.get('prev_low', spot)}) | "
-                f"Delta: {delta:,} (Imb: {imb}x) | {levels_analysis['reaction_type']} | "
+                f"SCALP BUY PUT (PE) [Confluence: {final_confluence}% | Sequence: COMPLETE]: "
+                f"Trend {trend_5m['bias']} -> Level ({levels_analysis['nearest_level_name']}) -> Pullback -> "
+                f"Candle ({candle.get('summary', 'CONFIRMED')}) -> Order-Flow ({delta:,}) | "
                 f"Targets: +{self.target_min_pts:g} to +{self.target_max_pts:g} pts (Structural SL: -{active_sl_pts:g} pts)"
             )
         else:
             final_confluence = min(max(bull_score, bear_score, 0), 100)
             reason = (
-                f"Scalp Scanning: 5m Trend={trend_5m['bias']} | VWAP={vwap} | Candle={candle.get('summary', 'WAIT')} | "
+                f"Scalp Scanning [Sequence: Trend->Level->Pullback->Candle->OrderFlow]: "
+                f"5m Trend={trend_5m['bias']} | VWAP={vwap} | Candle={candle.get('summary', 'WAIT')} | "
                 f"Delta={delta:+d} | Nearest Level: {levels_analysis['nearest_level_name']} ({levels_analysis['distance']} pts away) | "
-                f"Bull Score={max(bull_score, 0)} vs Bear Score={max(bear_score, 0)} (Need {CONFLUENCE_THRESHOLD} + VWAP/Candle)"
+                f"Score={final_confluence}% (Need {CONFLUENCE_THRESHOLD}% + Sequence)"
             )
 
         supertrend_dir = 1 if trend_5m["bias"] == "BULLISH" else (-1 if trend_5m["bias"] == "BEARISH" else 0)

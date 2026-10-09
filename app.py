@@ -332,7 +332,11 @@ def bot_worker_loop():
                         if contract_sym in paper_trader.open_positions:
                             pos = paper_trader.open_positions[contract_sym]
                             curr_p = current_premiums[contract_sym]
-                            exit_needed, exit_reason = risk_manager.check_position_exit(pos, curr_p)
+                            exit_needed, exit_reason = risk_manager.check_position_exit(
+                                pos,
+                                curr_p,
+                                confluence_score=pos.get("confluence_score", confluence)
+                            )
                             if exit_needed:
                                 executor.close_option_order(contract_sym, curr_p, exit_reason, pos["quantity"])
                                 add_log("EXIT FILLED", f"{contract_sym} closed @ Rs. {curr_p:.2f} ({exit_reason})", "SELL")
@@ -400,7 +404,10 @@ def bot_worker_loop():
                 if signal == "BUY_CE" and not is_ce_active:
                     allowed, risk_reason = risk_manager.can_open_position(
                         current_open_positions_count=len(paper_trader.open_positions),
-                        realized_daily_pnl=paper_trader.realized_pnl
+                        realized_daily_pnl=paper_trader.realized_pnl,
+                        total_daily_trades=len(paper_trader.trade_history),
+                        consecutive_losses=paper_trader.consecutive_losses,
+                        last_loss_timestamp=paper_trader.last_loss_timestamp
                     )
                     if allowed:
                         avail_funds = paper_trader.cash_balance if config.TRADING_MODE == "PAPER" else shared_state["portfolio"].get("cash_balance", 0.0)
@@ -447,7 +454,10 @@ def bot_worker_loop():
                 elif signal == "BUY_PE" and not is_pe_active:
                     allowed, risk_reason = risk_manager.can_open_position(
                         current_open_positions_count=len(paper_trader.open_positions),
-                        realized_daily_pnl=paper_trader.realized_pnl
+                        realized_daily_pnl=paper_trader.realized_pnl,
+                        total_daily_trades=len(paper_trader.trade_history),
+                        consecutive_losses=paper_trader.consecutive_losses,
+                        last_loss_timestamp=paper_trader.last_loss_timestamp
                     )
                     if allowed:
                         avail_funds = paper_trader.cash_balance if config.TRADING_MODE == "PAPER" else shared_state["portfolio"].get("cash_balance", 0.0)

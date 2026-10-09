@@ -4,6 +4,7 @@ Tracks simulated scalp option orders, lots, premiums, stop loss, targets,
 trailing stop to breakeven, index point capture, and P&L ledger.
 """
 
+import time
 from datetime import datetime
 import config
 
@@ -15,6 +16,8 @@ class PaperTrader:
         self.open_positions = {}  # contract_symbol -> position dict
         self.trade_history = []
         self.realized_pnl = 0.0
+        self.consecutive_losses = 0
+        self.last_loss_timestamp = 0.0
 
     def open_trade(
         self,
@@ -59,7 +62,8 @@ class PaperTrader:
             "breakeven_trigger": be_trig,
             "is_trailed_to_be": False,
             "confluence_score": confluence_score,
-            "entry_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "entry_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "entry_timestamp": time.time()
         }
 
         print(f"\n[SCALP ORDER FILLED] BUY {lots} Lots ({quantity} Qty) of {contract_symbol} @ Rs. {premium:.2f}")
@@ -86,6 +90,13 @@ class PaperTrader:
         return_capital = (qty * entry_premium) + trade_pnl
         self.cash_balance += max(return_capital, 0.0)
         self.realized_pnl += trade_pnl
+
+        # Track consecutive loss streak (Point 10 Rule)
+        if trade_pnl < 0:
+            self.consecutive_losses += 1
+            self.last_loss_timestamp = time.time()
+        else:
+            self.consecutive_losses = 0
 
         record = {
             "symbol": pos["symbol"],
@@ -131,6 +142,12 @@ class PaperTrader:
         )
         total_portfolio_value = self.cash_balance + equity_value
 
+        cooldown_sec = getattr(config, "CONSECUTIVE_LOSS_COOLDOWN_SECONDS", 600)
+        max_consecutive = getattr(config, "MAX_CONSECUTIVE_LOSSES", 2)
+        elapsed_loss = time.time() - self.last_loss_timestamp
+        is_cooldown = (self.consecutive_losses >= max_consecutive) and (elapsed_loss < cooldown_sec)
+        cooldown_remaining = max(0, int(cooldown_sec - elapsed_loss)) if is_cooldown else 0
+
         return {
             "starting_capital": self.starting_capital,
             "cash_balance": round(self.cash_balance, 2),
@@ -139,5 +156,9 @@ class PaperTrader:
             "unrealized_pnl": unrealized,
             "total_portfolio_value": round(total_portfolio_value, 2),
             "net_roi_pct": round(((total_portfolio_value - self.starting_capital) / self.starting_capital) * 100, 2),
-            "total_trades_completed": len(self.trade_history)
+            "total_trades_completed": len(self.trade_history),
+            "consecutive_losses": self.consecutive_losses,
+            "is_cooldown_active": is_cooldown,
+            "cooldown_remaining_sec": cooldown_remaining,
+            "max_daily_trades": getattr(config, "MAX_DAILY_TRADES", 15)
         }

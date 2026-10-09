@@ -96,6 +96,26 @@ SUPERTREND_PERIOD = 10
 SUPERTREND_MULTIPLIER = 3.0
 
 # ------------------------------------------------------------------------------
+# Points 8, 9 & 10 Scalping Rules (Per Strategy PDF Specifications)
+# ------------------------------------------------------------------------------
+# Point 8: Core Trade Sequence
+# Trend -> Important Level -> Pullback -> Candle Confirmation -> Order-Flow -> Entry
+ENFORCE_CORE_TRADE_SEQUENCE = True
+
+# Point 9: 1–3 Minute Trade Management & Exit Engine
+SCALP_MAX_HOLDING_SECONDS = 180      # 3 minutes (180s) maximum holding window
+SCALP_TIME_STOP_SECONDS = 180        # Exit if trade fails to gain momentum in 1-3 minutes
+ENABLE_RUNNER_TRAILING = True        # Trail stop when strong trend/momentum persists past Target 1
+MOMENTUM_TRAIL_GAP_PTS = 2.5         # 2.5 pts trailing gap when momentum extends toward Target 2
+
+# Point 10: 15 Trades Per Day Rule & Risk Controls
+MAX_DAILY_TRADES = 15                # 15 trades is a HARD MAXIMUM per day (not a daily quota)
+MAX_CONSECUTIVE_LOSSES = 2           # Pause trading after 2 consecutive losses
+CONSECUTIVE_LOSS_COOLDOWN_SECONDS = 600  # 10 minutes (600s) cooldown pause on 2 consecutive losses
+NO_MARTINGALE = True                 # Strictly never increase quantity to recover losses
+STARTING_CAPITAL_MODEL = 20000.0     # Rs. 20,000 model reference from PDF Section 11
+
+# ------------------------------------------------------------------------------
 # Scalp Options Risk Management Rules
 # ------------------------------------------------------------------------------
 INITIAL_PAPER_CAPITAL = float(os.getenv("INITIAL_PAPER_CAPITAL", "100000.0"))  # Rs. 1,00,000 Virtual Funds
