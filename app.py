@@ -224,6 +224,41 @@ initial_portfolio = (
     else paper_trader.get_portfolio_summary()
 )
 
+def get_initial_indices_snapshot() -> list:
+    try:
+        data = []
+        for idx in config.WATCHLIST_INDICES:
+            sym = idx["symbol"]
+            idx_data = market_data.get_index_data(sym)
+            spot = idx_data["spot"]
+            data.append({
+                "symbol": sym,
+                "name": idx_data["name"],
+                "spot": spot,
+                "spot_delta": idx_data.get("spot_delta", 0.0),
+                "atm_strike": idx_data["atm_strike"],
+                "ce_symbol": idx_data["ce_symbol"],
+                "pe_symbol": idx_data["pe_symbol"],
+                "ce_premium": idx_data["ce_premium"],
+                "pe_premium": idx_data["pe_premium"],
+                "lot_size": idx_data["lot_size"],
+                "iv": idx_data["iv"],
+                "strategy": "SCALPER",
+                "signal": "HOLD",
+                "reason": "Initializing NIFTY / BANKNIFTY scalper feed...",
+                "confluence_score": 0,
+                "target_1_spot": spot + 10,
+                "target_2_spot": spot + 15,
+                "sl_spot": spot - 6,
+                "fast_ema": spot,
+                "slow_ema": spot,
+                "rsi": 50.0,
+                "supertrend_dir": 0
+            })
+        return data
+    except Exception:
+        return []
+
 shared_state = {
     "broker": "GROWW F&O API",
     "mode": config.TRADING_MODE,
@@ -235,7 +270,7 @@ shared_state = {
     },
     "scan_cycle": 0,
     "portfolio": initial_portfolio,
-    "indices": [],
+    "indices": get_initial_indices_snapshot(),
     "open_positions": {},
     "activity_logs": [
         {
@@ -469,7 +504,10 @@ def bot_worker_loop():
                 shared_state["open_positions"] = open_positions_data
 
         except Exception as e:
-            print(f"[SCALP LOOP ERROR] {e}")
+            import traceback
+            err_msg = f"{type(e).__name__}: {e}"
+            print(f"[SCALP LOOP ERROR] {err_msg}\n{traceback.format_exc()}")
+            add_log("ENGINE ERROR", f"Scanner loop error: {err_msg}", "SELL")
 
         time.sleep(getattr(config, "CYCLE_INTERVAL_SECONDS", 3.0))
 
@@ -568,17 +606,31 @@ def toggle_mode():
     return jsonify({"status": "error", "message": "Invalid mode"}), 400
 
 
-def start_background_bot():
-    """Starts the trading scanner loop in background (works for both local & WSGI servers)."""
-    if not getattr(app, "_bot_started", False):
-        app._bot_started = True
-        t = threading.Thread(target=bot_worker_loop, daemon=True)
-        t.start()
-        print("[TRADING BOT] Background market scanner loop started successfully.")
+_bot_thread = None
+_bot_thread_lock = threading.Lock()
 
 
-# Auto-start for WSGI servers (Gunicorn / Render / Railway / Cloud)
-start_background_bot()
+def ensure_bot_running():
+    """
+    Guarantees that the trading scanner thread is running inside the active process/worker.
+    Works for local Python execution AND for Gunicorn workers on Render.
+    """
+    global _bot_thread
+    with _bot_thread_lock:
+        if _bot_thread is None or not _bot_thread.is_alive():
+            _bot_thread = threading.Thread(target=bot_worker_loop, daemon=True)
+            _bot_thread.start()
+            print("[TRADING BOT] Background market scanner loop started/revived successfully.")
+
+
+@app.before_request
+def ensure_bot_worker_alive():
+    """Runs on every HTTP request to guarantee background scanner runs in Gunicorn worker on Render."""
+    ensure_bot_running()
+
+
+# Auto-start for WSGI servers (Gunicorn / Render / Railway / Cloud) and local execution
+ensure_bot_running()
 
 
 def open_browser():
