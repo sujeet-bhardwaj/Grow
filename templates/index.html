@@ -839,11 +839,11 @@
 
       <div class="kpi-card" style="border-color: rgba(139, 92, 246, 0.45); background: rgba(139, 92, 246, 0.08);">
         <div class="kpi-label">
-          <span>Total Scalp Investment</span>
-          <span>💼</span>
+          <span>Day Turnover (Rotated Capital)</span>
+          <span>🔄</span>
         </div>
         <div class="kpi-value text-purple" id="valTotalTurnover" style="color: #c084fc;">Rs. 0.00</div>
-        <div class="kpi-subtext" id="valActiveInvested">Live Invested: Rs. 0.00</div>
+        <div class="kpi-subtext" id="valActiveInvested">Live Active Margin: Rs. 0.00</div>
       </div>
     </section>
 
@@ -1042,7 +1042,7 @@
       }
       const elActiveInv = document.getElementById('valActiveInvested');
       if (elActiveInv) {
-        elActiveInv.textContent = `Live Invested: Rs. ${Number(activeInvested).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${curPosKeys.length} Open)`;
+        elActiveInv.textContent = `Live Margin In-Trade: Rs. ${Number(activeInvested).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${curPosKeys.length} Open)`;
         elActiveInv.style.color = activeInvested > 0 ? '#34d399' : 'var(--text-muted)';
       }
       const badgeActiveInv = document.getElementById('activeInvestedSummaryBadge');
