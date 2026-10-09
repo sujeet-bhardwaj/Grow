@@ -577,8 +577,12 @@ def get_state():
 def reset_paper_funds():
     global paper_trader
     paper_trader = PaperTrader(starting_capital=100000.0)
-    add_log("RESET", "Paper trading portfolio reset to Rs. 1,00,000.00.", "SYSTEM")
-    return jsonify({"status": "success", "balance": 100000.0})
+    executor.paper_trader = paper_trader
+    with state_lock:
+        shared_state["portfolio"] = paper_trader.get_portfolio_summary()
+        shared_state["open_positions"] = {}
+    add_log("RESET", "Paper trading portfolio reset to Rs. 1,00,000.00 (Cooldown cleared).", "SYSTEM")
+    return jsonify({"status": "success", "balance": 100000.0, "portfolio": shared_state["portfolio"]})
 
 
 @app.route("/api/toggle_mode", methods=["POST"])
