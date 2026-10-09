@@ -13,10 +13,13 @@ class PaperTrader:
     def __init__(self, starting_capital: float = config.INITIAL_PAPER_CAPITAL):
         self.starting_capital = starting_capital
         self.cash_balance = starting_capital
+        self.peak_capital = starting_capital
+        self.max_drawdown = 0.0
         self.open_positions = {}  # contract_symbol -> position dict
         self.trade_history = []
         self.realized_pnl = 0.0
         self.consecutive_losses = 0
+        self.max_consecutive_losses_record = 0
         self.last_loss_timestamp = 0.0
 
     def open_trade(
@@ -73,7 +76,7 @@ class PaperTrader:
         return True
 
     def close_trade(self, contract_symbol: str, exit_premium: float, exit_reason: str) -> dict:
-        """Simulates closing an open scalping position and records P&L and point metrics."""
+        """Simulates closing an open scalping position with realistic costs, slippage and P&L ledger."""
         if contract_symbol not in self.open_positions:
             return {}
 
@@ -81,20 +84,43 @@ class PaperTrader:
         qty = pos["quantity"]
         entry_premium = pos["entry_price"]
 
-        trade_pnl = (exit_premium - entry_premium) * qty
-        pnl_pct = ((exit_premium - entry_premium) / entry_premium) * 100 if entry_premium > 0 else 0.0
+        # Realistic Slippage Buffer (PDF Section 11)
+        slippage = getattr(config, "SLIPPAGE_PTS", 0.0) if getattr(config, "REALISTIC_COSTS_ENABLED", True) else 0.0
+        effective_exit = max(round(exit_premium - slippage, 2), 0.5)
+
+        gross_trade_pnl = round((effective_exit - entry_premium) * qty, 2)
+
+        # Realistic F&O Brokerage & Regulatory Charges (PDF Section 11 & 12)
+        from risk_manager import RiskManager
+        charges_info = RiskManager.calculate_fno_charges(entry_premium, effective_exit, qty)
+        total_charges = charges_info["total_charges"] if getattr(config, "REALISTIC_COSTS_ENABLED", True) else 0.0
+        net_trade_pnl = round(gross_trade_pnl - total_charges, 2)
+
+        pnl_pct = round(((effective_exit - entry_premium) / entry_premium) * 100, 2) if entry_premium > 0 else 0.0
         delta = getattr(config, "ESTIMATED_ATM_DELTA", 0.52)
-        captured_pts = round((exit_premium - entry_premium), 2)
+        captured_pts = round((effective_exit - entry_premium), 2)
         idx_captured_pts = round(captured_pts / delta, 1)
 
-        # Return capital to cash balance
-        return_capital = (qty * entry_premium) + trade_pnl
+        # Return capital to cash balance (after net P&L)
+        return_capital = (qty * entry_premium) + net_trade_pnl
         self.cash_balance += max(return_capital, 0.0)
-        self.realized_pnl += trade_pnl
+        self.realized_pnl += net_trade_pnl
 
-        # Track consecutive loss streak (Point 10 Rule)
-        if trade_pnl < 0:
+        # Track Peak Capital & Drawdown (PDF Section 12)
+        curr_val = self.cash_balance + sum(
+            p["quantity"] * p.get("current_price", p["entry_price"]) for p in self.open_positions.values()
+        )
+        if curr_val > self.peak_capital:
+            self.peak_capital = curr_val
+        drawdown = self.peak_capital - curr_val
+        if drawdown > self.max_drawdown:
+            self.max_drawdown = drawdown
+
+        # Track consecutive loss streak (PDF Section 7 & 10)
+        if net_trade_pnl < 0:
             self.consecutive_losses += 1
+            if self.consecutive_losses > self.max_consecutive_losses_record:
+                self.max_consecutive_losses_record = self.consecutive_losses
             self.last_loss_timestamp = time.time()
         else:
             self.consecutive_losses = 0
@@ -106,21 +132,28 @@ class PaperTrader:
             "quantity": qty,
             "entry_price": entry_premium,
             "invested_amount": round(entry_premium * qty, 2),
-            "exit_price": exit_premium,
+            "raw_exit_price": exit_premium,
+            "exit_price": effective_exit,
+            "slippage": slippage,
             "captured_option_pts": captured_pts,
             "captured_index_pts": idx_captured_pts,
-            "pnl": round(trade_pnl, 2),
-            "pnl_pct": round(pnl_pct, 2),
+            "gross_pnl": gross_trade_pnl,
+            "charges": total_charges,
+            "charges_detail": charges_info,
+            "pnl": net_trade_pnl,  # Net P&L after costs (Section 12)
+            "net_pnl": net_trade_pnl,
+            "pnl_pct": pnl_pct,
             "entry_time": pos.get("entry_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             "exit_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "exit_reason": exit_reason
         }
         self.trade_history.append(record)
 
-        color_tag = "PROFIT" if trade_pnl >= 0 else "LOSS"
-        print(f"\n[SCALP POSITION CLOSED] {pos['symbol']} @ Rs. {exit_premium:.2f} ({exit_reason})")
+        color_tag = "PROFIT" if net_trade_pnl >= 0 else "LOSS"
+        print(f"\n[SCALP POSITION CLOSED] {pos['symbol']} @ Rs. {effective_exit:.2f} ({exit_reason})")
         print(f"  -> Points: {captured_pts:+} Option pts (~{idx_captured_pts:+} Index pts)")
-        print(f"  -> Result: {color_tag} Rs. {trade_pnl:+,.2f} ({pnl_pct:+.2f}%) | Total Realized PnL: Rs. {self.realized_pnl:+,.2f}\n")
+        print(f"  -> Gross PnL: Rs. {gross_trade_pnl:+,.2f} | Charges: Rs. {total_charges:.2f} | Net: {color_tag} Rs. {net_trade_pnl:+,.2f}")
+        print(f"  -> Total Realized Net PnL: Rs. {self.realized_pnl:+,.2f} | Cash: Rs. {self.cash_balance:,.2f}\n")
 
         return record
 
@@ -136,7 +169,20 @@ class PaperTrader:
         return round(total_unrealized, 2)
 
     def get_portfolio_summary(self, current_premiums: dict = None) -> dict:
-        """Returns portfolio performance metrics."""
+        """
+        Returns full portfolio performance metrics incorporating all 10 metrics
+        specified in PDF Section 12 (Performance Report):
+        1. Total trades
+        2. Win rate
+        3. Average win/loss
+        4. Net P&L after costs
+        5. Profit factor
+        6. Maximum drawdown
+        7. Consecutive losses
+        8. Trades/day
+        9. Monthly results
+        10. Equity curve
+        """
         unrealized = self.update_unrealized_pnl(current_premiums or {})
         equity_value = sum(
             pos["quantity"] * pos.get("current_price", pos["entry_price"])
@@ -144,16 +190,78 @@ class PaperTrader:
         )
         total_portfolio_value = self.cash_balance + equity_value
 
+        # Update peak capital & drawdown continuously
+        if total_portfolio_value > self.peak_capital:
+            self.peak_capital = total_portfolio_value
+        current_drawdown = self.peak_capital - total_portfolio_value
+        if current_drawdown > self.max_drawdown:
+            self.max_drawdown = current_drawdown
+
         cooldown_sec = getattr(config, "CONSECUTIVE_LOSS_COOLDOWN_SECONDS", 600)
         max_consecutive = getattr(config, "MAX_CONSECUTIVE_LOSSES", 2)
         elapsed_loss = time.time() - self.last_loss_timestamp
         is_cooldown = (self.consecutive_losses >= max_consecutive) and (elapsed_loss < cooldown_sec)
         cooldown_remaining = max(0, int(cooldown_sec - elapsed_loss)) if is_cooldown else 0
 
-        wins = len([t for t in self.trade_history if t.get("pnl", 0) > 0])
-        losses = len([t for t in self.trade_history if t.get("pnl", 0) < 0])
+        winning_trades_list = [t for t in self.trade_history if t.get("pnl", 0) > 0]
+        losing_trades_list = [t for t in self.trade_history if t.get("pnl", 0) < 0]
+        wins = len(winning_trades_list)
+        losses = len(losing_trades_list)
+        total_trades = len(self.trade_history)
+
         total_turnover = round(sum(t.get("invested_amount", 0) for t in self.trade_history), 2)
         currently_invested = round(sum(pos.get("invested_amount", 0) for pos in self.open_positions.values()), 2)
+        total_charges_deducted = round(sum(t.get("charges", 0) for t in self.trade_history), 2)
+        gross_pnl_total = round(sum(t.get("gross_pnl", t.get("pnl", 0)) for t in self.trade_history), 2)
+
+        # 3. Average win/loss (PDF Section 12)
+        avg_win = round(sum(t.get("pnl", 0) for t in winning_trades_list) / wins, 2) if wins > 0 else 0.0
+        avg_loss = round(abs(sum(t.get("pnl", 0) for t in losing_trades_list)) / losses, 2) if losses > 0 else 0.0
+        win_loss_ratio = round(avg_win / avg_loss, 2) if avg_loss > 0 else (round(avg_win, 2) if avg_win > 0 else 0.0)
+
+        # 5. Profit factor (Gross Profit / Gross Loss) (PDF Section 12)
+        gross_wins_sum = sum(t.get("gross_pnl", 0) for t in self.trade_history if t.get("gross_pnl", 0) > 0)
+        gross_loss_sum = abs(sum(t.get("gross_pnl", 0) for t in self.trade_history if t.get("gross_pnl", 0) < 0))
+        if gross_loss_sum > 0:
+            profit_factor = round(gross_wins_sum / gross_loss_sum, 2)
+        elif gross_wins_sum > 0:
+            profit_factor = 99.0
+        else:
+            profit_factor = 0.0
+
+        # 6. Maximum drawdown (PDF Section 12)
+        max_dd_amount = round(self.max_drawdown, 2)
+        max_dd_pct = round((self.max_drawdown / self.peak_capital) * 100, 2) if self.peak_capital > 0 else 0.0
+
+        # 8. Trades / day (PDF Section 12)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_trades = [t for t in self.trade_history if t.get("entry_time", "").startswith(today_str)]
+        unique_days = len(set(t.get("entry_time", "")[:10] for t in self.trade_history if t.get("entry_time")))
+        trades_per_day = round(total_trades / max(unique_days, 1), 1) if total_trades > 0 else 0.0
+
+        # 9. Monthly results (PDF Section 12)
+        monthly_map = {}
+        for t in self.trade_history:
+            m_key = t.get("entry_time", "")[:7] or today_str[:7]
+            if m_key not in monthly_map:
+                monthly_map[m_key] = {"month": m_key, "trades": 0, "net_pnl": 0.0, "wins": 0, "losses": 0}
+            monthly_map[m_key]["trades"] += 1
+            monthly_map[m_key]["net_pnl"] = round(monthly_map[m_key]["net_pnl"] + t.get("pnl", 0), 2)
+            if t.get("pnl", 0) > 0:
+                monthly_map[m_key]["wins"] += 1
+            else:
+                monthly_map[m_key]["losses"] += 1
+        monthly_results = list(monthly_map.values())
+
+        # 10. Equity curve points (PDF Section 12)
+        equity_curve = [{"time": "Start", "equity": self.starting_capital}]
+        running_eq = self.starting_capital
+        for idx, t in enumerate(self.trade_history):
+            running_eq += t.get("pnl", 0)
+            equity_curve.append({
+                "time": t.get("exit_time", f"Trade {idx+1}")[11:19] or f"T{idx+1}",
+                "equity": round(running_eq, 2)
+            })
 
         return {
             "starting_capital": self.starting_capital,
@@ -165,12 +273,30 @@ class PaperTrader:
             "unrealized_pnl": unrealized,
             "total_portfolio_value": round(total_portfolio_value, 2),
             "net_roi_pct": round(((total_portfolio_value - self.starting_capital) / self.starting_capital) * 100, 2),
-            "total_trades_completed": len(self.trade_history),
+            
+            # PDF Section 12 Required Metrics
+            "total_trades_completed": total_trades,
             "winning_trades": wins,
             "losing_trades": losses,
-            "win_rate_pct": round((wins / len(self.trade_history) * 100), 1) if self.trade_history else 0.0,
+            "win_rate_pct": round((wins / total_trades * 100), 1) if total_trades else 0.0,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "avg_win_loss_ratio": win_loss_ratio,
+            "gross_pnl_total": gross_pnl_total,
+            "total_charges_deducted": total_charges_deducted,
+            "net_pnl_after_costs": round(self.realized_pnl, 2),
+            "profit_factor": profit_factor,
+            "max_drawdown_amount": max_dd_amount,
+            "max_drawdown_pct": max_dd_pct,
+            "peak_capital": round(self.peak_capital, 2),
             "consecutive_losses": self.consecutive_losses,
+            "max_consecutive_losses_recorded": self.max_consecutive_losses_record,
             "is_cooldown_active": is_cooldown,
             "cooldown_remaining_sec": cooldown_remaining,
-            "max_daily_trades": getattr(config, "MAX_DAILY_TRADES", 15)
+            "today_trades_count": len(today_trades),
+            "trades_per_day": trades_per_day,
+            "max_daily_trades": getattr(config, "MAX_DAILY_TRADES", 15),
+            "monthly_results": monthly_results,
+            "equity_curve": equity_curve[-25:]  # Recent 25 points for curve
         }
+

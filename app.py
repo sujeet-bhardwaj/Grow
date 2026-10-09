@@ -271,6 +271,7 @@ shared_state = {
     "scan_cycle": 0,
     "portfolio": initial_portfolio,
     "indices": get_initial_indices_snapshot(),
+    "kill_switch_active": False,
     "open_positions": {},
     "trade_history": [],
     "activity_logs": [
@@ -408,7 +409,8 @@ def bot_worker_loop():
                         realized_daily_pnl=paper_trader.realized_pnl,
                         total_daily_trades=len(paper_trader.trade_history),
                         consecutive_losses=paper_trader.consecutive_losses,
-                        last_loss_timestamp=paper_trader.last_loss_timestamp
+                        last_loss_timestamp=paper_trader.last_loss_timestamp,
+                        kill_switch_active=shared_state.get("kill_switch_active", False)
                     )
                     if allowed:
                         avail_funds = paper_trader.cash_balance if config.TRADING_MODE == "PAPER" else shared_state["portfolio"].get("cash_balance", 0.0)
@@ -458,7 +460,8 @@ def bot_worker_loop():
                         realized_daily_pnl=paper_trader.realized_pnl,
                         total_daily_trades=len(paper_trader.trade_history),
                         consecutive_losses=paper_trader.consecutive_losses,
-                        last_loss_timestamp=paper_trader.last_loss_timestamp
+                        last_loss_timestamp=paper_trader.last_loss_timestamp,
+                        kill_switch_active=shared_state.get("kill_switch_active", False)
                     )
                     if allowed:
                         avail_funds = paper_trader.cash_balance if config.TRADING_MODE == "PAPER" else shared_state["portfolio"].get("cash_balance", 0.0)
@@ -622,6 +625,33 @@ def toggle_mode():
             "portfolio": shared_state["portfolio"]
         })
     return jsonify({"status": "error", "message": "Invalid mode"}), 400
+
+
+@app.route("/api/kill_switch", methods=["POST"])
+def toggle_kill_switch():
+    data = request.get_json(silent=True) or {}
+    active = data.get("active")
+    if active is None:
+        active = not shared_state.get("kill_switch_active", False)
+    reason = data.get("reason", "Manual Emergency Kill Switch Triggered")
+
+    with state_lock:
+        shared_state["kill_switch_active"] = bool(active)
+    config.KILL_SWITCH_ACTIVE = bool(active)
+
+    square_off_res = {"paper_closed": 0, "live_closed": 0}
+    if active:
+        square_off_res = executor.emergency_square_off_all(reason)
+        add_log("KILL SWITCH ACTIVATED", f"EMERGENCY HALT: All positions squared off ({square_off_res['paper_closed']} Paper, {square_off_res['live_closed']} Live). Reason: {reason}", "SELL")
+    else:
+        add_log("KILL SWITCH RESET", "Emergency kill-switch disabled. Automated scalping re-enabled.", "INFO")
+
+    return jsonify({
+        "status": "success",
+        "kill_switch_active": shared_state["kill_switch_active"],
+        "squared_off": square_off_res,
+        "portfolio": shared_state["portfolio"]
+    })
 
 
 _bot_thread = None

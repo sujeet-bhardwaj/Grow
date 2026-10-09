@@ -119,3 +119,41 @@ class ExecutionManager:
                 return False
 
         return True
+
+    def emergency_square_off_all(self, reason: str = "EMERGENCY KILL SWITCH ACTIVATED") -> dict:
+        """
+        Immediately squares off all active positions across Paper and Live Groww broker
+        per PDF Section 7, 8 & 14 (Kill switch / protective emergency exit).
+        """
+        results = {"paper_closed": 0, "live_closed": 0, "errors": []}
+
+        # 1. Square off all open Paper positions
+        open_syms = list(self.paper_trader.open_positions.keys())
+        for sym in open_syms:
+            pos = self.paper_trader.open_positions.get(sym)
+            if pos:
+                curr_p = pos.get("current_price", pos.get("entry_price", 100.0))
+                self.paper_trader.close_trade(sym, curr_p, f"KILL SWITCH: {reason}")
+                results["paper_closed"] += 1
+
+        # 2. Square off any active Live Groww positions
+        if config.TRADING_MODE == "LIVE" and self.groww_client:
+            try:
+                from growwapi import GrowwAPI
+                pos_res = self.groww_client.get_positions_for_user()
+                if isinstance(pos_res, dict):
+                    positions = pos_res.get("positions", [])
+                    for p in positions:
+                        net_qty = int(p.get("net_quantity", 0) or 0)
+                        sym = p.get("trading_symbol", "")
+                        if net_qty > 0 and sym:
+                            self.close_option_order(sym, 0.0, f"KILL SWITCH EMERGENCY: {reason}", quantity=net_qty)
+                            results["live_closed"] += 1
+            except Exception as e:
+                err_str = str(e)
+                results["errors"].append(err_str)
+                print(f"[KILL SWITCH LIVE EXIT ERROR] {err_str}")
+
+        print(f"[EMERGENCY SQUARED OFF] Completed: {results['paper_closed']} Paper, {results['live_closed']} Live positions closed.")
+        return results
+

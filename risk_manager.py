@@ -6,7 +6,7 @@ class RiskManager:
     def __init__(self, initial_capital: float = getattr(config, "INITIAL_PAPER_CAPITAL", 100000.0)):
         self.initial_capital = initial_capital
         self.max_daily_loss = getattr(config, "MAX_DAILY_LOSS", 5000.0)
-        self.max_lots = getattr(config, "MAX_LOTS_PER_TRADE", 2)
+        self.max_lots = getattr(config, "MAX_LOTS_PER_TRADE", 1)
         self.max_positions = getattr(config, "MAX_CONCURRENT_POSITIONS", 1)
         self.delta = getattr(config, "ESTIMATED_ATM_DELTA", 0.52)
         self.scalp_target_pts = getattr(config, "SCALP_DEFAULT_TARGET_PTS", 12.5)
@@ -32,22 +32,62 @@ class RiskManager:
         """Builds clean contract display symbol (e.g. NIFTY 25150 CE)."""
         return f"{underlying} {strike} {option_type.upper()}"
 
+    @staticmethod
+    def calculate_fno_charges(entry_premium: float, exit_premium: float, quantity: int) -> dict:
+        """
+        Calculates realistic brokerage, statutory taxes, and exchange charges
+        per Indian NSE F&O regulatory framework (PDF Section 11 & 12):
+        - Brokerage: Rs. 20 per executed order (Rs. 40 total round trip)
+        - STT: 0.0625% on sell turnover
+        - Exchange transaction charges: 0.053% on turnover (buy + sell)
+        - GST: 18% on (brokerage + exchange charges)
+        - Stamp duty: 0.003% on buy turnover
+        - SEBI turnover fee: 0.0001% (Rs. 10/crore)
+        """
+        buy_turnover = entry_premium * quantity
+        sell_turnover = exit_premium * quantity
+        total_turnover = buy_turnover + sell_turnover
+
+        brokerage = getattr(config, "BROKERAGE_PER_ORDER", 20.0) * 2.0  # Rs. 40 total round trip
+        stt = round(sell_turnover * 0.000625, 2)  # 0.0625% on sell
+        exchange_charges = round(total_turnover * 0.00053, 2)
+        gst = round((brokerage + exchange_charges) * 0.18, 2)
+        stamp_duty = round(buy_turnover * 0.00003, 2)
+        sebi_fee = round(total_turnover * 0.000001, 2)
+
+        total_charges = round(brokerage + stt + exchange_charges + gst + stamp_duty + sebi_fee, 2)
+        return {
+            "brokerage": brokerage,
+            "stt": stt,
+            "exchange_charges": exchange_charges,
+            "gst": gst,
+            "stamp_duty": stamp_duty,
+            "sebi_fee": sebi_fee,
+            "total_charges": total_charges
+        }
+
     def can_open_position(
         self,
         current_open_positions_count: int,
         realized_daily_pnl: float,
         total_daily_trades: int = 0,
         consecutive_losses: int = 0,
-        last_loss_timestamp: float = 0.0
+        last_loss_timestamp: float = 0.0,
+        kill_switch_active: bool = False
     ) -> tuple[bool, str]:
         """
         Validates if risk limits permit entering a new scalping trade.
-        Enforces Point 10 rules:
+        Enforces Point 10 and Section 7 rules:
+        - Emergency Kill Switch validation
         - Max 15 trades per day hard ceiling (overtrading circuit breaker)
         - Consecutive-loss protection / cooldown pause
         - Max daily loss circuit breaker
         - Single open position limit
         """
+        # 0. Emergency Kill Switch (PDF Section 7 & 14)
+        if kill_switch_active:
+            return False, "EMERGENCY KILL SWITCH: Trading is halted by kill-switch."
+
         # 1. Daily Loss Circuit Breaker
         if realized_daily_pnl <= -abs(self.max_daily_loss):
             return False, f"CIRCUIT BREAKER: Daily loss limit (Rs. {abs(self.max_daily_loss):,.2f}) hit!"
@@ -63,7 +103,7 @@ class RiskManager:
                 remaining = int(self.consecutive_loss_cooldown - elapsed)
                 return False, f"CONSECUTIVE LOSS PAUSE: {consecutive_losses} consecutive losses. Cooldown active for {remaining}s to protect capital."
 
-        # 4. Max Concurrent Scalping Positions
+        # 4. Max Concurrent Scalping Positions (PDF Section 7: One-position-at-a-time)
         if current_open_positions_count >= self.max_positions:
             return False, f"Max concurrent scalping positions limit ({self.max_positions}) reached."
 

@@ -669,6 +669,7 @@
             <span class="badge-pill badge-scalp">🎯 10–15 PT SCALPER</span>
             <span class="badge-pill badge-groww" id="growwUccBadge">UCC: 6629599909</span>
             <span class="badge-pill badge-mode" id="botModeBadge">PAPER SIMULATION</span>
+            <span class="badge-pill" id="killSwitchBadge" style="display:none; background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; color: #fca5a5; font-weight: 800; animation: glowRed 1.2s infinite;">🛑 KILL SWITCH ACTIVATED</span>
           </div>
           <p style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">
             15m Opening Range (09:15–09:30) • VWAP Trend Filter • 1:2 R:R • EMA 9/21/50 • Pivots/PDH/PDL • Order-Flow Delta • 50-Pt Round Levels
@@ -796,6 +797,9 @@
         <button id="btnResetPaper" onclick="resetPaperCapital()" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.18)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'">
           🔄 Reset Rs. 1,00,000
         </button>
+        <button id="btnKillSwitch" onclick="toggleKillSwitch()" style="background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%); color: #fff; border: 1px solid #ef4444; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 800; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.5); display: flex; align-items: center; gap: 6px; transition: transform 0.15s ease;" onmouseover="this.style.transform='scale(1.03)'" onmouseout="this.style.transform='scale(1)'">
+          <span>🛑</span> <span id="killSwitchBtnText">EMERGENCY KILL SWITCH</span>
+        </button>
       </div>
     </div>
 
@@ -906,6 +910,95 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- PDF Specification Section 12: Performance Report Table -->
+    <div class="section-box" style="margin-top: 24px; margin-bottom: 24px; border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(15, 23, 42, 0.85);">
+      <div class="section-header" style="flex-wrap: wrap; gap: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px;">
+        <div class="section-title" style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 20px;">📊</span>
+          <span>12. Performance Report (PDF Specification Requirements)</span>
+          <span class="badge-pill" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);">✓ 10 Tracked Metrics</span>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted);">
+          Deterministic NIFTY Scalping Rules • Real Slippage & Regulatory F&O Charges Deducted
+        </div>
+      </div>
+
+      <div style="overflow-x: auto; margin-top: 14px;">
+        <table class="fno-table" style="width: 100%;">
+          <thead>
+            <tr>
+              <th style="width: 25%;">Metric (Per PDF Spec)</th>
+              <th style="width: 12%;">PDF Status</th>
+              <th style="width: 33%;">Live Bot Performance</th>
+              <th style="width: 30%;">Detailed Breakdown / Context</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="font-weight: 700;">1. Total trades</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfTotalTrades">0 Trades</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfTotalTradesDetail">Max 15 trades hard limit per day</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">2. Win rate</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfWinRate">0.0%</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfWinRateDetail">0 Wins / 0 Losses</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">3. Average win/loss</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfAvgWinLoss">Avg Win: Rs. 0.00 / Loss: Rs. 0.00</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfWinLossRatio">Win/Loss Ratio: 0.00 (Target R:R ~1:2)</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">4. Net P&L after costs</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfNetPnl">Rs. +0.00</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfChargesDetail">Gross: Rs. 0.00 | Brokerage & Taxes: Rs. 0.00</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">5. Profit factor</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfProfitFactor">0.00</td>
+              <td style="color: var(--text-muted); font-size: 12px;">Gross Wins / Gross Losses</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">6. Maximum drawdown</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace; color: #f87171;" id="perfMaxDrawdown">Rs. 0.00 (0.00%)</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfPeakCapital">Peak Capital: Rs. 1,00,000.00</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">7. Consecutive losses</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfConsecLosses">0 (Max Record: 0)</td>
+              <td style="color: var(--text-muted); font-size: 12px;">Pause trading after 2 losses (10m Cooldown)</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">8. Trades/day</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfTradesPerDay">0.0 Trades/Day</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfTodayTradesDetail">Today: 0 / 15 Max Limit</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">9. Monthly results</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfMonthlyResults">Active Month</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfMonthlyDetail">Monthly P&L tracking ledger</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">10. Equity curve</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace; color: #38bdf8;" id="perfEquityCurve">Progression Active</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfEquityCurvePoints">Starting: Rs. 1,00,000.00</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Complete Scalp Trade Summary & Order History Ledger -->
@@ -1586,6 +1679,135 @@
         console.error(e);
       }
     }
+
+    async function toggleKillSwitch() {
+      const isCurrentlyActive = Boolean(window._killSwitchActive);
+      if (!isCurrentlyActive) {
+        const confirmed = confirm(
+          "⚠️ TRIGGER EMERGENCY KILL SWITCH?\n\n" +
+          "This will IMMEDIATELY SQUARE OFF ALL POSITIONS across Paper and Live Broker and HALT all automated scalping!\n\n" +
+          "Click OK to halt immediately."
+        );
+        if (!confirmed) return;
+      } else {
+        const resume = confirm("Re-enable automated trading and reset the Emergency Kill Switch?");
+        if (!resume) return;
+      }
+
+      try {
+        const res = await fetch('/api/kill_switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            active: !isCurrentlyActive,
+            reason: isCurrentlyActive ? 'User resumed bot' : 'Emergency kill switch pressed'
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(
+            data.kill_switch_active 
+              ? "🛑 EMERGENCY KILL SWITCH ACTIVATED! All positions squared off." 
+              : "🟢 Kill switch deactivated. Automated scalping resumed.",
+            'live'
+          );
+          fetchDashboardState();
+        }
+      } catch (err) {
+        console.error("Kill switch request error:", err);
+      }
+    }
+
+    // Bind Section 12 Performance Report & Kill Switch UI
+    const origRenderDashboard = renderDashboard;
+    renderDashboard = function(data) {
+      origRenderDashboard(data);
+      if (!data) return;
+      const p = data.portfolio || {};
+
+      // 1. Kill Switch Badge & Button State
+      window._killSwitchActive = Boolean(data.kill_switch_active);
+      const ksBadge = document.getElementById('killSwitchBadge');
+      const ksBtnText = document.getElementById('killSwitchBtnText');
+      const ksBtn = document.getElementById('btnKillSwitch');
+      if (window._killSwitchActive) {
+        if (ksBadge) ksBadge.style.display = 'inline-block';
+        if (ksBtnText) ksBtnText.textContent = '🟢 RESUME BOT (RESET KILL SWITCH)';
+        if (ksBtn) {
+          ksBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+          ksBtn.style.borderColor = '#10b981';
+        }
+      } else {
+        if (ksBadge) ksBadge.style.display = 'none';
+        if (ksBtnText) ksBtnText.textContent = 'EMERGENCY KILL SWITCH';
+        if (ksBtn) {
+          ksBtn.style.background = 'linear-gradient(135deg, #b91c1c 0%, #991b1b 100%)';
+          ksBtn.style.borderColor = '#ef4444';
+        }
+      }
+
+      // 2. Section 12 Performance Report 10 Metrics
+      const perfTotal = document.getElementById('perfTotalTrades');
+      if (perfTotal) {
+        perfTotal.textContent = `${p.total_trades_completed || 0} Trades`;
+        const maxDailyTrades = p.max_daily_trades || 15;
+        document.getElementById('perfTotalTradesDetail').textContent = `Hard daily limit: ${maxDailyTrades} trades/day | Today: ${p.today_trades_count || 0}`;
+        
+        const winRate = p.win_rate_pct !== undefined ? p.win_rate_pct : 0;
+        const perfWr = document.getElementById('perfWinRate');
+        perfWr.textContent = `${winRate}%`;
+        perfWr.style.color = winRate >= 50 ? '#10b981' : (winRate > 0 ? '#f87171' : '#f8fafc');
+        document.getElementById('perfWinRateDetail').textContent = `${p.winning_trades || 0} Wins / ${p.losing_trades || 0} Losses`;
+
+        document.getElementById('perfAvgWinLoss').textContent = `Avg Win: Rs. ${Number(p.avg_win || 0).toFixed(2)} | Avg Loss: Rs. ${Number(p.avg_loss || 0).toFixed(2)}`;
+        document.getElementById('perfWinLossRatio').textContent = `Win/Loss Ratio: ${p.avg_win_loss_ratio || 0.0} (Target R:R ~1:2)`;
+
+        const netPnl = p.net_pnl_after_costs !== undefined ? p.net_pnl_after_costs : (p.realized_pnl || 0);
+        const perfNet = document.getElementById('perfNetPnl');
+        perfNet.textContent = formatRs(netPnl);
+        perfNet.className = netPnl >= 0 ? 'text-green' : 'text-red';
+        const grossPnl = p.gross_pnl_total || (p.realized_pnl || 0);
+        const charges = p.total_charges_deducted || 0;
+        document.getElementById('perfChargesDetail').textContent = `Gross P&L: Rs. ${Number(grossPnl).toLocaleString('en-IN', {minimumFractionDigits: 2})} | Brokerage & Taxes: Rs. ${Number(charges).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+
+        const pf = p.profit_factor || 0;
+        const perfPf = document.getElementById('perfProfitFactor');
+        perfPf.textContent = Number(pf).toFixed(2);
+        perfPf.style.color = pf >= 1.5 ? '#10b981' : (pf >= 1.0 ? '#38bdf8' : '#f87171');
+
+        const ddAmt = p.max_drawdown_amount || 0;
+        const ddPct = p.max_drawdown_pct || 0;
+        document.getElementById('perfMaxDrawdown').textContent = `Rs. ${Number(ddAmt).toLocaleString('en-IN', {minimumFractionDigits: 2})} (${Number(ddPct).toFixed(2)}%)`;
+        document.getElementById('perfPeakCapital').textContent = `Peak Portfolio Capital: Rs. ${Number(p.peak_capital || p.starting_capital || 100000).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+
+        const consecLoss = p.consecutive_losses || 0;
+        const maxConsec = p.max_consecutive_losses_recorded || 0;
+        document.getElementById('perfConsecLosses').textContent = `${consecLoss} Current (Max Record: ${maxConsec})`;
+
+        document.getElementById('perfTradesPerDay').textContent = `${p.trades_per_day || 0.0} Trades / Day`;
+        document.getElementById('perfTodayTradesDetail').textContent = `Today: ${p.today_trades_count || 0} / 15 Max Limit`;
+
+        const mResults = p.monthly_results || [];
+        if (mResults.length > 0) {
+          const m = mResults[mResults.length - 1];
+          document.getElementById('perfMonthlyResults').textContent = `${m.month}: ${formatRs(m.net_pnl)} (${m.trades} trades)`;
+          document.getElementById('perfMonthlyDetail').textContent = `${m.wins}W / ${m.losses}L in active month`;
+        } else {
+          document.getElementById('perfMonthlyResults').textContent = "Current Month Active";
+          document.getElementById('perfMonthlyDetail').textContent = "Tracking 1-minute live intraday results";
+        }
+
+        const eqCurve = p.equity_curve || [];
+        if (eqCurve.length > 1) {
+          const lastEq = eqCurve[eqCurve.length - 1].equity;
+          document.getElementById('perfEquityCurve').textContent = `Rs. ${Number(lastEq).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+          document.getElementById('perfEquityCurvePoints').textContent = `${eqCurve.length} recorded curve milestones`;
+        } else {
+          document.getElementById('perfEquityCurve').textContent = `Rs. ${Number(p.starting_capital || 100000).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+          document.getElementById('perfEquityCurvePoints').textContent = "Baseline capital curve active";
+        }
+      }
+    };
 
     setInterval(fetchDashboardState, 2000);
     fetchDashboardState();

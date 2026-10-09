@@ -116,16 +116,23 @@ NO_MARTINGALE = True                 # Strictly never increase quantity to recov
 STARTING_CAPITAL_MODEL = 20000.0     # Rs. 20,000 model reference from PDF Section 11
 
 # ------------------------------------------------------------------------------
-# Scalp Options Risk Management Rules
+# Scalp Options Risk Management Rules (PDF Section 2 & 7)
 # ------------------------------------------------------------------------------
 INITIAL_PAPER_CAPITAL = float(os.getenv("INITIAL_PAPER_CAPITAL", "100000.0"))  # Rs. 1,00,000 Virtual Funds
-MAX_LOTS_PER_TRADE = 2             # Maximum lots per position (e.g., 2 lots = 50 Qty in NIFTY)
-MAX_CONCURRENT_POSITIONS = 1       # Maximum simultaneous open positions
+MAX_LOTS_PER_TRADE = 1             # Prefer 1 lot initially per PDF Section 7 (1 lot = 25 Qty in NIFTY for Rs. 20k model)
+MAX_CONCURRENT_POSITIONS = 1       # Maximum simultaneous open positions (One-position-at-a-time rule)
 MAX_DAILY_LOSS = 5000.0            # Max daily loss circuit breaker (Rs. 5,000)
 ESTIMATED_ATM_DELTA = 0.52         # Delta ~0.52 (10-15 index pts ~= 5.2 - 7.8 option pts)
 OPTION_SCALP_TARGET_PTS = 7.0      # ~7 points profit target on option premium
 OPTION_SCALP_SL_PTS = 3.5          # ~3.5 points stop loss on option premium
 OPTION_STOP_LOSS_PCT = 20.0        # Fallback % Stop Loss
+
+# Emergency Kill Switch & Execution Reconciliation (PDF Section 7 & 8)
+KILL_SWITCH_ACTIVE = False         # Master kill switch state
+REALISTIC_COSTS_ENABLED = True     # Deduct realistic brokerage & statutory taxes (Section 11 & 12)
+BROKERAGE_PER_ORDER = 20.0         # Rs. 20 per executed order (Rs. 40 round trip)
+SLIPPAGE_PTS = 0.3                 # Realistic execution slippage buffer (Section 11)
+
 # ------------------------------------------------------------------------------
 # PINE SCRIPT ORB (OPENING RANGE BREAKOUT) INTRADAY PARAMETERS
 # ------------------------------------------------------------------------------
