@@ -836,6 +836,15 @@
         <div class="kpi-value text-blue" id="valUnrealized">Rs. +0.00</div>
         <div class="kpi-subtext" id="valOpenTrades">0 Active Scalp Contracts</div>
       </div>
+
+      <div class="kpi-card" style="border-color: rgba(139, 92, 246, 0.45); background: rgba(139, 92, 246, 0.08);">
+        <div class="kpi-label">
+          <span>Total Scalp Investment</span>
+          <span>💼</span>
+        </div>
+        <div class="kpi-value text-purple" id="valTotalTurnover" style="color: #c084fc;">Rs. 0.00</div>
+        <div class="kpi-subtext" id="valActiveInvested">Live Invested: Rs. 0.00</div>
+      </div>
     </section>
 
     <!-- Main Content Layout -->
@@ -859,11 +868,14 @@
 
         <!-- Active Open Options Positions -->
         <div class="section-box">
-          <div class="section-header">
+          <div class="section-header" style="flex-wrap: wrap; gap: 8px;">
             <div class="section-title">
-              <span>📊</span> Active Scalp Positions (Target: +10-15 Pts | SL: -6 Pts)
+              <span>📊</span> Active Scalp Positions & Live Margin Invested
             </div>
-            <span class="badge-pill badge-mode" id="openPosCountBadge">0 Open</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span class="badge-pill" style="background: rgba(139, 92, 246, 0.2); color: #c084fc;" id="activeInvestedSummaryBadge">Invested: Rs. 0.00</span>
+              <span class="badge-pill badge-mode" id="openPosCountBadge">0 Open</span>
+            </div>
           </div>
 
           <div id="positionsContainer">
@@ -1009,6 +1021,34 @@
       unrealEl.className = 'kpi-value ' + (unrealPnl >= 0 ? 'text-green' : 'text-red');
       document.getElementById('valOpenTrades').textContent = `${p.open_positions_count || 0} Active Scalp Contracts`;
       document.getElementById('openPosCountBadge').textContent = `${p.open_positions_count || 0} Open`;
+
+      // Calculate Total Turnover & Currently Active Margin Invested
+      const allTrades = data.trade_history || [];
+      const curPositions = data.open_positions || {};
+      const curPosKeys = Object.keys(curPositions);
+
+      const activeInvested = curPosKeys.reduce((acc, k) => {
+        const item = curPositions[k];
+        return acc + (item.invested_amount || ((Number(item.entry_price || 0)) * (Number(item.quantity || 25))));
+      }, 0);
+
+      const totalTurnover = allTrades.reduce((acc, t) => {
+        return acc + (t.invested_amount || ((Number(t.entry_price || 0)) * (Number(t.quantity || 25))));
+      }, 0);
+
+      const elTurnover = document.getElementById('valTotalTurnover');
+      if (elTurnover) {
+        elTurnover.textContent = "Rs. " + Number(totalTurnover + activeInvested).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      }
+      const elActiveInv = document.getElementById('valActiveInvested');
+      if (elActiveInv) {
+        elActiveInv.textContent = `Live Invested: Rs. ${Number(activeInvested).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${curPosKeys.length} Open)`;
+        elActiveInv.style.color = activeInvested > 0 ? '#34d399' : 'var(--text-muted)';
+      }
+      const badgeActiveInv = document.getElementById('activeInvestedSummaryBadge');
+      if (badgeActiveInv) {
+        badgeActiveInv.textContent = `Invested: Rs. ${Number(activeInvested).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+      }
 
       if (data.scan_cycle) {
         document.getElementById('scanCycleInfo').textContent = `Cycle #${data.scan_cycle}`;
