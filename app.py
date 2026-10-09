@@ -60,8 +60,18 @@ _has_warned_live = False
 
 def fetch_groww_live_data_now(current_premiums: dict = None) -> tuple[dict, dict]:
     """Hits Groww API to fetch real F&O margin and open positions (only in LIVE mode)."""
-    global _last_live_fetch_time, _cached_live_portfolio, _cached_live_positions, _has_warned_live
+    global _last_live_fetch_time, _cached_live_portfolio, _cached_live_positions, _has_warned_live, token, groww_profile
     current_premiums = current_premiums or {}
+
+    # Dynamically refresh token from cache / .env if token is simulated or client uninitialized
+    if not token or token == "SIMULATED_GROWW_TOKEN" or not executor.groww_client:
+        new_token, new_profile = get_groww_session()
+        if new_token and new_token != "SIMULATED_GROWW_TOKEN":
+            token = new_token
+            groww_profile = new_profile
+            executor.access_token = new_token
+            executor._init_client()
+            print(f"[GROWW SYNC] Live token dynamically synchronized for UCC: {new_profile.get('ucc')}")
 
     # Never query live broker if in Paper trading or if token is simulated
     if config.TRADING_MODE != "LIVE" or not token or token == "SIMULATED_GROWW_TOKEN":

@@ -35,29 +35,38 @@ def get_groww_session() -> tuple[str, dict]:
     # 2. Try generating fresh session token using Groww API Key and Secret
     api_key = getattr(config, "GROWW_API_KEY", "")
     api_secret = getattr(config, "GROWW_API_SECRET", "")
+    vendor_key = getattr(config, "GROWW_VENDOR_KEY", "")
 
-    if api_key and api_secret:
-        try:
-            from growwapi import GrowwAPI
-            session_token = GrowwAPI.get_access_token(
-                api_key=api_key,
-                secret=api_secret
-            )
-            if session_token:
-                token = session_token
-                save_groww_token({
-                    "access_token": token,
-                    "date": date.today().isoformat(),
-                    "created_at": datetime.now().isoformat()
-                })
-                try:
-                    g = GrowwAPI(token)
-                    profile = g.get_user_profile()
-                except Exception:
-                    pass
-                return token, profile
-        except Exception as e:
-            print(f"[GROWW AUTH] API Key exchange note: {e}")
+    keys_to_try = []
+    if vendor_key:
+        keys_to_try.append(vendor_key)
+    if api_key and api_key not in keys_to_try:
+        keys_to_try.append(api_key)
+
+    if api_secret and keys_to_try:
+        for candidate_key in keys_to_try:
+            try:
+                from growwapi import GrowwAPI
+                session_token = GrowwAPI.get_access_token(
+                    api_key=candidate_key,
+                    secret=api_secret
+                )
+                if session_token:
+                    token = session_token
+                    save_groww_token({
+                        "access_token": token,
+                        "date": date.today().isoformat(),
+                        "created_at": datetime.now().isoformat()
+                    })
+                    try:
+                        g = GrowwAPI(token)
+                        profile = g.get_user_profile()
+                    except Exception:
+                        pass
+                    print(f"[GROWW AUTH] Successfully exchanged API Key & Secret for Live Session Token!")
+                    return token, profile
+            except Exception as e:
+                print(f"[GROWW AUTH] API Key exchange note ({candidate_key[:12]}...): {e}")
 
     # 3. Direct token fallback from config or cached
     fallback_token = (
