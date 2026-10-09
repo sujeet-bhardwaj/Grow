@@ -272,6 +272,7 @@ shared_state = {
     "portfolio": initial_portfolio,
     "indices": get_initial_indices_snapshot(),
     "open_positions": {},
+    "trade_history": [],
     "activity_logs": [
         {
             "title": "SCALPER READY",
@@ -512,6 +513,7 @@ def bot_worker_loop():
                 shared_state["portfolio"] = portfolio_summary
                 shared_state["indices"] = indices_data
                 shared_state["open_positions"] = open_positions_data
+                shared_state["trade_history"] = paper_trader.trade_history.copy()
 
         except Exception as e:
             import traceback
@@ -581,6 +583,7 @@ def reset_paper_funds():
     with state_lock:
         shared_state["portfolio"] = paper_trader.get_portfolio_summary()
         shared_state["open_positions"] = {}
+        shared_state["trade_history"] = []
     add_log("RESET", "Paper trading portfolio reset to Rs. 1,00,000.00 (Cooldown cleared).", "SYSTEM")
     return jsonify({"status": "success", "balance": 100000.0, "portfolio": shared_state["portfolio"]})
 
@@ -608,6 +611,7 @@ def toggle_mode():
                 shared_state["mode"] = requested_mode
                 shared_state["portfolio"] = paper_port
                 shared_state["open_positions"] = paper_trader.open_positions.copy()
+                shared_state["trade_history"] = paper_trader.trade_history.copy()
             msg = "Switched to Paper Trading (Rs. 1,00,000 Virtual Funds). Real broker capital is 100% protected."
 
         add_log("MODE CHANGE", msg, "SELL" if requested_mode == "LIVE" else "INFO")

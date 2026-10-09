@@ -53,6 +53,7 @@ class PaperTrader:
             "lots": lots,
             "quantity": quantity,
             "entry_price": premium,
+            "invested_amount": round(cost, 2),
             "current_price": premium,
             "stop_loss_price": sl_premium,
             "target_price": tp_premium,
@@ -104,12 +105,13 @@ class PaperTrader:
             "lots": pos.get("lots", 1),
             "quantity": qty,
             "entry_price": entry_premium,
+            "invested_amount": round(entry_premium * qty, 2),
             "exit_price": exit_premium,
             "captured_option_pts": captured_pts,
             "captured_index_pts": idx_captured_pts,
             "pnl": round(trade_pnl, 2),
             "pnl_pct": round(pnl_pct, 2),
-            "entry_time": pos["entry_time"],
+            "entry_time": pos.get("entry_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             "exit_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "exit_reason": exit_reason
         }
@@ -148,15 +150,25 @@ class PaperTrader:
         is_cooldown = (self.consecutive_losses >= max_consecutive) and (elapsed_loss < cooldown_sec)
         cooldown_remaining = max(0, int(cooldown_sec - elapsed_loss)) if is_cooldown else 0
 
+        wins = len([t for t in self.trade_history if t.get("pnl", 0) > 0])
+        losses = len([t for t in self.trade_history if t.get("pnl", 0) < 0])
+        total_turnover = round(sum(t.get("invested_amount", 0) for t in self.trade_history), 2)
+        currently_invested = round(sum(pos.get("invested_amount", 0) for pos in self.open_positions.values()), 2)
+
         return {
             "starting_capital": self.starting_capital,
             "cash_balance": round(self.cash_balance, 2),
+            "currently_invested": currently_invested,
+            "total_turnover": total_turnover,
             "open_positions_count": len(self.open_positions),
             "realized_pnl": round(self.realized_pnl, 2),
             "unrealized_pnl": unrealized,
             "total_portfolio_value": round(total_portfolio_value, 2),
             "net_roi_pct": round(((total_portfolio_value - self.starting_capital) / self.starting_capital) * 100, 2),
             "total_trades_completed": len(self.trade_history),
+            "winning_trades": wins,
+            "losing_trades": losses,
+            "win_rate_pct": round((wins / len(self.trade_history) * 100), 1) if self.trade_history else 0.0,
             "consecutive_losses": self.consecutive_losses,
             "is_cooldown_active": is_cooldown,
             "cooldown_remaining_sec": cooldown_remaining,

@@ -896,6 +896,27 @@
 
     </div>
 
+    <!-- Complete Scalp Trade Summary & Order History Ledger -->
+    <div class="section-box" style="margin-top: 24px; margin-bottom: 24px;">
+      <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
+        <div class="section-title">
+          <span>📋</span> Complete Trade Summary & Order History Ledger
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <span class="badge-pill" style="background: rgba(59, 130, 246, 0.18); color: #60a5fa;" id="histTotalTradesBadge">0 Closed Trades</span>
+          <span class="badge-pill" style="background: rgba(16, 185, 129, 0.18); color: #10b981;" id="histWinRateBadge">Win Rate: 0%</span>
+          <span class="badge-pill" style="background: rgba(139, 92, 246, 0.18); color: #c084fc;" id="histTurnoverBadge">Total Turnover: Rs. 0.00</span>
+          <span class="badge-pill" style="background: rgba(245, 158, 11, 0.18); color: #fbbf24;" id="histNetPnlBadge">Realized P&L: Rs. 0.00</span>
+        </div>
+      </div>
+
+      <div style="overflow-x: auto;" id="tradeHistoryContainer">
+        <div style="text-align: center; padding: 28px; color: var(--text-muted); font-size: 14px;">
+          No completed trades yet. Once a scalp contract closes, complete entry/exit times, invested capital, points, and P&L will show here.
+        </div>
+      </div>
+    </div>
+
     <footer class="footer">
       <div>Groww NIFTY Scalper • Multi-Timeframe Algorithmic Engine</div>
       <div>Auto-refreshes every 2 seconds via live API poll</div>
@@ -1234,7 +1255,9 @@
               <tr>
                 <th>Contract</th>
                 <th>Lots (Qty)</th>
-                <th>Entry Premium</th>
+                <th>Buy Date & Time</th>
+                <th>Buy Premium</th>
+                <th>Invested Margin</th>
                 <th>Current Premium</th>
                 <th>Scalp Target / SL</th>
                 <th>Trailing BE</th>
@@ -1248,6 +1271,8 @@
                 const pnlColor = pnl >= 0 ? 'text-green' : 'text-red';
                 const typeColor = pos.option_type === 'CE' ? '#10b981' : '#ef4444';
                 const isTrailed = pos.is_trailed_to_be;
+                const invested = pos.invested_amount || (Number(pos.entry_price || 0) * Number(pos.quantity || 25));
+                const buyTime = pos.entry_time || 'Active';
 
                 return `
                   <tr>
@@ -1256,7 +1281,13 @@
                       ${pos.symbol}
                     </td>
                     <td>${pos.lots || 1} Lots (${pos.quantity} Qty)</td>
-                    <td>Rs. ${Number(pos.entry_price).toFixed(2)}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;">
+                      ${buyTime}
+                    </td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">Rs. ${Number(pos.entry_price).toFixed(2)}</td>
+                    <td style="font-weight:700;color:#c084fc;font-family:'JetBrains Mono',monospace;">
+                      Rs. ${Number(invested).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </td>
                     <td style="font-weight:700;">Rs. ${Number(pos.current_price).toFixed(2)}</td>
                     <td style="font-size:11px;">
                       <span style="color:#10b981;">Target: Rs. ${pos.target_price} (+12.5 pts)</span><br>
@@ -1300,6 +1331,99 @@
             <div>${log.message}</div>
           </div>
         `).join('');
+      }
+
+      // 5. Render Trade History & Execution Ledger
+      const historyContainer = document.getElementById('tradeHistoryContainer');
+      const trades = data.trade_history || [];
+      const totalTradesBadge = document.getElementById('histTotalTradesBadge');
+      const winRateBadge = document.getElementById('histWinRateBadge');
+      const turnoverBadge = document.getElementById('histTurnoverBadge');
+      const netPnlBadge = document.getElementById('histNetPnlBadge');
+
+      if (totalTradesBadge) {
+        const wins = trades.filter(t => (t.pnl || 0) > 0).length;
+        const totalTurnover = trades.reduce((sum, t) => sum + (t.invested_amount || ((t.entry_price || 0) * (t.quantity || 25)) || 0), 0);
+        const totalPnl = trades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+        const winRate = trades.length > 0 ? ((wins / trades.length) * 100).toFixed(1) : 0;
+
+        totalTradesBadge.textContent = `${trades.length} Closed Trades (${wins}W / ${trades.length - wins}L)`;
+        winRateBadge.textContent = `Win Rate: ${winRate}%`;
+        winRateBadge.style.color = winRate >= 50 ? '#10b981' : '#f87171';
+        turnoverBadge.textContent = `Total Turnover: Rs. ${Number(totalTurnover).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        netPnlBadge.textContent = `Realized: ${formatRs(totalPnl)}`;
+        netPnlBadge.style.color = totalPnl >= 0 ? '#10b981' : '#ef4444';
+      }
+
+      if (historyContainer) {
+        if (trades.length === 0) {
+          historyContainer.innerHTML = '<div style="text-align:center;padding:28px;color:var(--text-muted);font-size:14px;">No closed trades yet. Bot scans & executes scalps automatically with 1–3m holding window.</div>';
+        } else {
+          historyContainer.innerHTML = `
+            <table class="fno-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Contract</th>
+                  <th>Lots (Qty)</th>
+                  <th>Buy Date & Time</th>
+                  <th>Buy Price</th>
+                  <th>Invested Capital</th>
+                  <th>Sell Date & Time</th>
+                  <th>Sell Price</th>
+                  <th>Points Captured</th>
+                  <th>Realized P&L</th>
+                  <th>Exit Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${trades.slice().reverse().map((t, idx) => {
+                  const tradeNum = trades.length - idx;
+                  const pnl = t.pnl || 0;
+                  const pnlPct = t.pnl_pct || 0;
+                  const pnlColor = pnl >= 0 ? 'text-green' : 'text-red';
+                  const isCE = (t.symbol || '').includes('CE');
+                  const typeColor = isCE ? '#10b981' : '#ef4444';
+                  const optPts = t.captured_option_pts !== undefined ? t.captured_option_pts : ((t.exit_price || 0) - (t.entry_price || 0));
+                  const idxPts = t.captured_index_pts !== undefined ? t.captured_index_pts : (optPts / 0.52).toFixed(1);
+                  const invested = t.invested_amount || ((t.entry_price || 0) * (t.quantity || 25));
+
+                  return `
+                    <tr>
+                      <td style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-weight:600;">#${tradeNum}</td>
+                      <td style="font-weight:700;">
+                        <span style="color:${typeColor};margin-right:6px;">●</span>
+                        ${t.symbol}
+                      </td>
+                      <td>${t.lots || 1} Lots (${t.quantity} Qty)</td>
+                      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;">
+                        ${t.entry_time || '-'}
+                      </td>
+                      <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">Rs. ${Number(t.entry_price).toFixed(2)}</td>
+                      <td style="font-weight:700;color:#c084fc;font-family:'JetBrains Mono',monospace;">
+                        Rs. ${Number(invested).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </td>
+                      <td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#94a3b8;">
+                        ${t.exit_time || '-'}
+                      </td>
+                      <td style="font-family:'JetBrains Mono',monospace;font-weight:600;">Rs. ${Number(t.exit_price).toFixed(2)}</td>
+                      <td style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${optPts >= 0 ? '#10b981' : '#ef4444'};">
+                        ${optPts >= 0 ? '+' : ''}${Number(optPts).toFixed(2)} opt (${idxPts >= 0 ? '+' : ''}${idxPts} idx)
+                      </td>
+                      <td class="${pnlColor}" style="font-weight:700;font-family:'JetBrains Mono',monospace;">
+                        ${formatRs(pnl)}
+                        <span style="font-size:10px;opacity:0.85;">(${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)</span>
+                      </td>
+                      <td style="font-size:11px;color:var(--text-muted);max-width:200px;">
+                        ${t.exit_reason || 'Standard Exit'}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+        }
       }
 
       // 5. Update Mode Ribbon
