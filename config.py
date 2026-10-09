@@ -125,8 +125,8 @@ OR_INIT_CAPITAL = 200000.0       # Initial capital base: Rs. 2,00,000
 COMMISSION_PER_ORDER = 20.0      # Rs. 20 per order
 SLIPPAGE_POINTS = 2.0            # 2 points slippage
 
-# Active Strategy Engine Mode: "ORB" (Opening Range Breakout), "SCALP" (10-15 pt Scalper), or "HYBRID"
-ACTIVE_STRATEGY_MODE = "ORB"
+# Active Strategy Engine Mode: "SCALP" (NIFTY 10-15 pt Scalper per Strategy PDF), "ORB" (15-min Breakout), or "HYBRID"
+ACTIVE_STRATEGY_MODE = "SCALP"
 
 # Scanner loop interval in seconds
 CYCLE_INTERVAL_SECONDS = 3.0

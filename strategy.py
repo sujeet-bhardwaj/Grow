@@ -74,6 +74,132 @@ class IndicatorCalculator:
             "is_bearish_rejection": is_bearish_rejection
         }
 
+    @staticmethod
+    def analyze_candle_engine(prev_candle: dict, curr_candle: dict) -> dict:
+        """
+        Candle Engine per NIFTY 50 Scalping Strategy (Points 6 & 7):
+        - Bullish Engulfing & Bearish Engulfing
+        - Bullish Rejection (Hammer) & Bearish Rejection (Shooting Star)
+        - Strong Bullish / Bearish Close
+        - Confirmation Break of High / Low triggers
+        - Structural Low & High calculation for dynamic Stop-Loss
+        """
+        po = float(prev_candle.get("open", 0.0))
+        ph = float(prev_candle.get("high", 0.0))
+        pl = float(prev_candle.get("low", 0.0))
+        pc = float(prev_candle.get("close", 0.0))
+
+        co = float(curr_candle.get("open", 0.0))
+        ch = float(curr_candle.get("high", 0.0))
+        cl = float(curr_candle.get("low", 0.0))
+        cc = float(curr_candle.get("close", 0.0))
+
+        c_rng = max(ch - cl, 0.05)
+        p_rng = max(ph - pl, 0.05)
+        c_body = abs(cc - co)
+        p_body = abs(pc - po)
+
+        upper_wick = ch - max(co, cc)
+        lower_wick = min(co, cc) - cl
+        upper_ratio = round(upper_wick / c_rng, 3)
+        lower_ratio = round(lower_wick / c_rng, 3)
+
+        min_wick = getattr(config, "REJECTION_WICK_MIN_PCT", 0.35)
+
+        # 1. Bullish Rejection / Hammer near support
+        is_bullish_rejection = (lower_ratio >= min_wick) and (cc >= (cl + c_rng * 0.45))
+
+        # 2. Bearish Rejection / Shooting Star near resistance
+        is_bearish_rejection = (upper_ratio >= min_wick) and (cc <= (ch - c_rng * 0.45))
+
+        # 3. Bullish Engulfing Candle
+        is_bullish_engulfing = (
+            (pc < po) and (cc > co) and (cc >= po) and (c_body >= p_body * 0.85)
+        ) or (
+            (pc < po) and (cc > co) and (cc > ph)
+        )
+
+        # 4. Bearish Engulfing Candle
+        is_bearish_engulfing = (
+            (pc > po) and (cc < co) and (cc <= po) and (c_body >= p_body * 0.85)
+        ) or (
+            (pc > po) and (cc < co) and (cc < pl)
+        )
+
+        # 5. Strong Bullish / Bearish Close (Closing in top/bottom 30% of range)
+        is_strong_bull_close = (cc > co) and ((cc - cl) >= (c_rng * 0.70))
+        is_strong_bear_close = (cc < co) and ((ch - cc) >= (c_rng * 0.70))
+
+        # 6. Previous candle pattern recognition
+        p_upper_wick = ph - max(po, pc)
+        p_lower_wick = min(po, pc) - pl
+        p_lower_ratio = p_lower_wick / p_rng
+        p_upper_ratio = p_upper_wick / p_rng
+        prev_is_bull_rejection = (p_lower_ratio >= min_wick) and (pc >= (pl + p_rng * 0.45))
+        prev_is_bear_rejection = (p_upper_ratio >= min_wick) and (pc <= (ph - p_rng * 0.45))
+
+        # 7. Break of Confirmation Candle High / Low Triggers
+        # CALL Entry: Break of confirmation candle high
+        break_prev_high = (cc > ph) or (ch > ph)
+        # PUT Entry: Break of confirmation candle low
+        break_prev_low = (cc < pl) or (cl < pl)
+
+        bullish_candle_confirmed = (
+            (is_bullish_engulfing and break_prev_high)
+            or (is_bullish_rejection and (cc > (co + cl) / 2))
+            or (prev_is_bull_rejection and break_prev_high)
+            or (is_strong_bull_close and break_prev_high)
+        )
+
+        bearish_candle_confirmed = (
+            (is_bearish_engulfing and break_prev_low)
+            or (is_bearish_rejection and (cc < (co + ch) / 2))
+            or (prev_is_bear_rejection and break_prev_low)
+            or (is_strong_bear_close and break_prev_low)
+        )
+
+        # Structural high & low for stop loss
+        structural_low = min(cl, pl)
+        structural_high = max(ch, ph)
+
+        summary = "NORMAL_CANDLE"
+        if is_bullish_engulfing:
+            summary = "BULLISH_ENGULFING"
+        elif is_bullish_rejection:
+            summary = "BULLISH_HAMMER_REJECTION"
+        elif is_strong_bull_close:
+            summary = "STRONG_BULL_CLOSE"
+        elif is_bearish_engulfing:
+            summary = "BEARISH_ENGULFING"
+        elif is_bearish_rejection:
+            summary = "BEARISH_STAR_REJECTION"
+        elif is_strong_bear_close:
+            summary = "STRONG_BEAR_CLOSE"
+
+        return {
+            "range": round(c_rng, 2),
+            "body": round(c_body, 2),
+            "upper_wick": round(upper_wick, 2),
+            "lower_wick": round(lower_wick, 2),
+            "upper_ratio": upper_ratio,
+            "lower_ratio": lower_ratio,
+            "is_bullish_rejection": is_bullish_rejection,
+            "is_bearish_rejection": is_bearish_rejection,
+            "is_bullish_engulfing": is_bullish_engulfing,
+            "is_bearish_engulfing": is_bearish_engulfing,
+            "is_strong_bull_close": is_strong_bull_close,
+            "is_strong_bear_close": is_strong_bear_close,
+            "break_prev_high": break_prev_high,
+            "break_prev_low": break_prev_low,
+            "bullish_candle_confirmed": bullish_candle_confirmed,
+            "bearish_candle_confirmed": bearish_candle_confirmed,
+            "prev_high": round(ph, 2),
+            "prev_low": round(pl, 2),
+            "structural_low": round(structural_low, 2),
+            "structural_high": round(structural_high, 2),
+            "summary": summary
+        }
+
 
 class ORBStrategyEngine:
     """
@@ -351,6 +477,7 @@ class NiftyScalpStrategyEngine:
         df["ema21"] = IndicatorCalculator.calculate_ema(df["close"], self.ema_mid)
         df["ema50"] = IndicatorCalculator.calculate_ema(df["close"], min(self.ema_slow, max(len(df)-1, 10)))
         df["vol_ma"] = IndicatorCalculator.calculate_volume_ma(df["volume"], self.vol_ma_period)
+        df["vwap"] = IndicatorCalculator.calculate_vwap(df)
 
         curr = df.iloc[-1]
         prev = df.iloc[-2]
@@ -361,6 +488,7 @@ class NiftyScalpStrategyEngine:
         c = float(curr["close"])
         vol = float(curr["volume"])
         vol_ma = float(curr["vol_ma"]) if curr["vol_ma"] > 0 else 100000.0
+        vwap = round(float(curr["vwap"]), 2)
 
         e9 = round(float(curr["ema9"]), 2)
         e21 = round(float(curr["ema21"]), 2)
@@ -378,17 +506,25 @@ class NiftyScalpStrategyEngine:
         imbalance_ratio = round(buy_vol / (sell_vol + 1e-4), 2)
 
         wick_info = IndicatorCalculator.analyze_candle_wicks(o, h, l, c)
+        candle_engine = IndicatorCalculator.analyze_candle_engine(prev.to_dict(), curr.to_dict())
 
         bull_cross = (prev_e9 <= prev_e21) and (e9 > e21)
         bear_cross = (prev_e9 >= prev_e21) and (e9 < e21)
         bull_pullback = (l <= e9 <= h or l <= e21 <= h) and (c > e9)
         bear_pullback = (l <= e9 <= h or l <= e21 <= h) and (c < e9)
 
+        # VWAP directional alignment
+        vwap_aligned_bull = c >= vwap
+        vwap_aligned_bear = c <= vwap
+
         return {
             "ema9": e9,
             "ema21": e21,
             "ema50": e50,
             "spot": c,
+            "vwap": vwap,
+            "vwap_aligned_bull": vwap_aligned_bull,
+            "vwap_aligned_bear": vwap_aligned_bear,
             "volume": int(vol),
             "vol_ma": int(vol_ma),
             "vol_ratio": vol_ratio,
@@ -398,6 +534,7 @@ class NiftyScalpStrategyEngine:
             "delta": delta,
             "imbalance_ratio": imbalance_ratio,
             "wick_info": wick_info,
+            "candle_engine": candle_engine,
             "bull_cross": bull_cross,
             "bear_cross": bear_cross,
             "bull_pullback": bull_pullback,
@@ -547,7 +684,9 @@ class NiftyScalpStrategyEngine:
         trend_5m = self.evaluate_5m_trend(df_5m if df_5m is not None else df_1m)
         exec_1m = self.evaluate_1m_execution(df_1m)
         spot = exec_1m["spot"]
+        vwap = exec_1m.get("vwap", spot)
         levels_analysis = self.evaluate_levels_interaction(spot, levels or {})
+        candle = exec_1m.get("candle_engine", {})
 
         wick = exec_1m["wick_info"]
         absorption_type = "NONE"
@@ -559,11 +698,28 @@ class NiftyScalpStrategyEngine:
         bull_score = 0
         bear_score = 0
 
+        # Layer 1: 5-minute Macro Trend Bias (Triple EMA 9/21/50)
         if trend_5m["bias"] == "BULLISH":
             bull_score += trend_5m["score"]
         elif trend_5m["bias"] == "BEARISH":
             bear_score += trend_5m["score"]
 
+        # Layer 2: Intraday VWAP Directional Filter (Point 6)
+        # CALL: Price preferably above VWAP | PUT: Price preferably below VWAP
+        vwap_bull = exec_1m.get("vwap_aligned_bull", spot >= vwap)
+        vwap_bear = exec_1m.get("vwap_aligned_bear", spot <= vwap)
+
+        if vwap_bull:
+            bull_score += 15
+        else:
+            bull_score -= 25  # Strict filter: blocks counter-trend CALL attempts below VWAP
+
+        if vwap_bear:
+            bear_score += 15
+        else:
+            bear_score -= 25  # Strict filter: blocks counter-trend PUT attempts above VWAP
+
+        # Layer 3: 1-minute EMA 9/21/50 Alignment & Pullback
         e9_1m = exec_1m["ema9"]
         e21_1m = exec_1m["ema21"]
         e50_1m = exec_1m["ema50"]
@@ -578,9 +734,26 @@ class NiftyScalpStrategyEngine:
         if exec_1m["bear_pullback"] or exec_1m["bear_cross"]:
             bear_score += 5
 
+        # Layer 4: Meaningful Support / Resistance / Pivots / 50-pt Psychological Levels
         bull_score += min(levels_analysis["score_bull"], 20)
         bear_score += min(levels_analysis["score_bear"], 20)
 
+        # Layer 5: Candle Engine & Break of Confirmation Candle High/Low (Point 7)
+        if candle.get("bullish_candle_confirmed"):
+            bull_score += 20
+        elif candle.get("is_bullish_rejection") or candle.get("is_bullish_engulfing"):
+            bull_score += 12
+        if candle.get("break_prev_high"):
+            bull_score += 6
+
+        if candle.get("bearish_candle_confirmed"):
+            bear_score += 20
+        elif candle.get("is_bearish_rejection") or candle.get("is_bearish_engulfing"):
+            bear_score += 12
+        if candle.get("break_prev_low"):
+            bear_score += 6
+
+        # Layer 6: Order-Flow Delta, Imbalance & Absorption
         delta = exec_1m["delta"]
         imb = exec_1m["imbalance_ratio"]
         if delta > 500 and imb >= config.ORDER_FLOW_IMBALANCE_RATIO:
@@ -598,13 +771,14 @@ class NiftyScalpStrategyEngine:
         elif absorption_type == "BEARISH_REJECTION":
             bear_score += 10
 
+        # Layer 7: 20-period Volume Surge Confirmation
         if exec_1m["volume_confirmed"]:
             if bull_score > bear_score:
                 bull_score += 10
             elif bear_score > bull_score:
                 bear_score += 10
 
-        CONFLUENCE_THRESHOLD = 62
+        CONFLUENCE_THRESHOLD = 65
         signal = "HOLD"
         reason = "Awaiting high-probability 10–15 pt scalping confluence"
         final_confluence = 0
@@ -612,38 +786,70 @@ class NiftyScalpStrategyEngine:
         target_1_spot = spot
         target_2_spot = spot
         sl_spot = spot
+        active_sl_pts = self.sl_pts
 
-        if bull_score >= CONFLUENCE_THRESHOLD and bull_score > (bear_score + 10):
+        # Strict Confluence Verification per Section 6 (CALL) & Section 7 (PUT)
+        call_eligible = (
+            bull_score >= CONFLUENCE_THRESHOLD
+            and bull_score > (bear_score + 15)
+            and vwap_bull
+            and trend_5m["bias"] == "BULLISH"
+            and (candle.get("bullish_candle_confirmed") or candle.get("break_prev_high"))
+        )
+
+        put_eligible = (
+            bear_score >= CONFLUENCE_THRESHOLD
+            and bear_score > (bull_score + 15)
+            and vwap_bear
+            and trend_5m["bias"] == "BEARISH"
+            and (candle.get("bearish_candle_confirmed") or candle.get("break_prev_low"))
+        )
+
+        if call_eligible:
             signal = "BUY_CE"
-            final_confluence = min(bull_score, 100)
+            final_confluence = min(max(bull_score, 0), 100)
             target_1_spot = round(spot + self.target_min_pts, 2)
             target_2_spot = round(spot + self.target_max_pts, 2)
-            sl_spot = round(spot - self.sl_pts, 2)
+
+            # Structural SL: below rejection/structure low per PDF Section 6
+            struct_low = candle.get("structural_low", spot - self.sl_pts)
+            risk_dist = max(spot - struct_low, 3.5)
+            active_sl_pts = round(min(risk_dist, self.sl_pts), 2)
+            sl_spot = round(spot - active_sl_pts, 2)
+
             reason = (
                 f"SCALP BUY CALL (CE) [Confluence: {final_confluence}%]: "
-                f"5m Trend {trend_5m['bias']} | 1m EMA 9/21 aligned | "
-                f"Delta: +{delta:,} (Imbalance: {imb}x) | {levels_analysis['reaction_type']} | "
-                f"Targets: +{self.target_min_pts:g} to +{self.target_max_pts:g} pts (SL: -{self.sl_pts:g} pts)"
+                f"5m Trend {trend_5m['bias']} | Spot > VWAP ({vwap}) | "
+                f"Candle: {candle.get('summary', 'CONFIRMED')} (High Break: {candle.get('prev_high', spot)}) | "
+                f"Delta: +{delta:,} (Imb: {imb}x) | {levels_analysis['reaction_type']} | "
+                f"Targets: +{self.target_min_pts:g} to +{self.target_max_pts:g} pts (Structural SL: -{active_sl_pts:g} pts)"
             )
 
-        elif bear_score >= CONFLUENCE_THRESHOLD and bear_score > (bull_score + 10):
+        elif put_eligible:
             signal = "BUY_PE"
-            final_confluence = min(bear_score, 100)
+            final_confluence = min(max(bear_score, 0), 100)
             target_1_spot = round(spot - self.target_min_pts, 2)
             target_2_spot = round(spot - self.target_max_pts, 2)
-            sl_spot = round(spot + self.sl_pts, 2)
+
+            # Structural SL: above rejection/structure high per PDF Section 7
+            struct_high = candle.get("structural_high", spot + self.sl_pts)
+            risk_dist = max(struct_high - spot, 3.5)
+            active_sl_pts = round(min(risk_dist, self.sl_pts), 2)
+            sl_spot = round(spot + active_sl_pts, 2)
+
             reason = (
                 f"SCALP BUY PUT (PE) [Confluence: {final_confluence}%]: "
-                f"5m Trend {trend_5m['bias']} | 1m EMA 9/21 aligned | "
-                f"Delta: {delta:,} (Imbalance: {imb}x) | {levels_analysis['reaction_type']} | "
-                f"Targets: +{self.target_min_pts:g} to +{self.target_max_pts:g} pts (SL: -{self.sl_pts:g} pts)"
+                f"5m Trend {trend_5m['bias']} | Spot < VWAP ({vwap}) | "
+                f"Candle: {candle.get('summary', 'CONFIRMED')} (Low Break: {candle.get('prev_low', spot)}) | "
+                f"Delta: {delta:,} (Imb: {imb}x) | {levels_analysis['reaction_type']} | "
+                f"Targets: +{self.target_min_pts:g} to +{self.target_max_pts:g} pts (Structural SL: -{active_sl_pts:g} pts)"
             )
         else:
-            final_confluence = max(bull_score, bear_score)
+            final_confluence = min(max(bull_score, bear_score, 0), 100)
             reason = (
-                f"Scalp Scanning: 5m Trend={trend_5m['bias']} | 1m Delta={delta:+d} | "
-                f"Nearest Level: {levels_analysis['nearest_level_name']} ({levels_analysis['distance']} pts away) | "
-                f"Bull Score={bull_score} vs Bear Score={bear_score} (Need {CONFLUENCE_THRESHOLD})"
+                f"Scalp Scanning: 5m Trend={trend_5m['bias']} | VWAP={vwap} | Candle={candle.get('summary', 'WAIT')} | "
+                f"Delta={delta:+d} | Nearest Level: {levels_analysis['nearest_level_name']} ({levels_analysis['distance']} pts away) | "
+                f"Bull Score={max(bull_score, 0)} vs Bear Score={max(bear_score, 0)} (Need {CONFLUENCE_THRESHOLD} + VWAP/Candle)"
             )
 
         supertrend_dir = 1 if trend_5m["bias"] == "BULLISH" else (-1 if trend_5m["bias"] == "BEARISH" else 0)
@@ -655,6 +861,7 @@ class NiftyScalpStrategyEngine:
             "reason": reason,
             "confluence_score": final_confluence,
             "spot": spot,
+            "vwap": vwap,
             "fast_ema": exec_1m["ema9"],
             "slow_ema": exec_1m["ema21"],
             "ema50_1m": exec_1m["ema50"],
@@ -666,7 +873,7 @@ class NiftyScalpStrategyEngine:
             "target_points": self.target_default_pts,
             "target_min_pts": self.target_min_pts,
             "target_max_pts": self.target_max_pts,
-            "stop_loss_points": self.sl_pts,
+            "stop_loss_points": active_sl_pts,
             "target_1_spot": target_1_spot,
             "target_2_spot": target_2_spot,
             "sl_spot": sl_spot,
