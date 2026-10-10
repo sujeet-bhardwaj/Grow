@@ -133,6 +133,12 @@ REALISTIC_COSTS_ENABLED = True     # Deduct realistic brokerage & statutory taxe
 BROKERAGE_PER_ORDER = 20.0         # Rs. 20 per executed order (Rs. 40 round trip)
 SLIPPAGE_PTS = 0.3                 # Realistic execution slippage buffer (Section 11)
 
+# Bot State Controls (PDF 2 Section 11)
+POST_EXIT_COOLDOWN_SECONDS = 60    # 60s cooldown pause after an exit to avoid immediate re-entry into chop
+ENFORCE_MARKET_HOURS = True        # Strict market-hours filter (09:15 - 15:30 IST Mon-Fri)
+PREVENT_DUPLICATE_SIGNALS = True   # Prevent duplicate entries on same setup or candle
+
+
 # ------------------------------------------------------------------------------
 # PINE SCRIPT ORB (OPENING RANGE BREAKOUT) INTRADAY PARAMETERS
 # ------------------------------------------------------------------------------

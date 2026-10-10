@@ -21,6 +21,7 @@ class RiskManager:
         self.enable_runner_trailing = getattr(config, "ENABLE_RUNNER_TRAILING", True)
         self.momentum_trail_gap = getattr(config, "MOMENTUM_TRAIL_GAP_PTS", 2.5)
         self.starting_capital_model = getattr(config, "STARTING_CAPITAL_MODEL", 20000.0)
+        self.post_exit_cooldown = getattr(config, "POST_EXIT_COOLDOWN_SECONDS", 60)
 
     @staticmethod
     def calculate_atm_strike(spot_price: float, strike_step: int) -> int:
@@ -73,12 +74,17 @@ class RiskManager:
         total_daily_trades: int = 0,
         consecutive_losses: int = 0,
         last_loss_timestamp: float = 0.0,
-        kill_switch_active: bool = False
+        kill_switch_active: bool = False,
+        last_exit_timestamp: float = 0.0,
+        market_hours_open: bool = True,
+        market_hours_reason: str = ""
     ) -> tuple[bool, str]:
         """
         Validates if risk limits permit entering a new scalping trade.
-        Enforces Point 10 and Section 7 rules:
+        Enforces Point 10 and Section 11 rules:
         - Emergency Kill Switch validation
+        - Market-hours filter (09:15 - 15:30 IST)
+        - Cooldown after an exit (PDF Section 11)
         - Max 15 trades per day hard ceiling (overtrading circuit breaker)
         - Consecutive-loss protection / cooldown pause
         - Max daily loss circuit breaker
@@ -88,24 +94,37 @@ class RiskManager:
         if kill_switch_active:
             return False, "EMERGENCY KILL SWITCH: Trading is halted by kill-switch."
 
-        # 1. Daily Loss Circuit Breaker
+        # 1. Market-Hours Filter (PDF 2 Section 11)
+        if getattr(config, "ENFORCE_MARKET_HOURS", True) and not market_hours_open:
+            return False, f"MARKET HOURS FILTER: {market_hours_reason or 'Outside active exchange session.'}"
+
+        # 2. Cooldown After An Exit (PDF 2 Section 11)
+        if last_exit_timestamp > 0:
+            elapsed_exit = time.time() - last_exit_timestamp
+            if elapsed_exit < self.post_exit_cooldown:
+                rem = int(self.post_exit_cooldown - elapsed_exit)
+                return False, f"POST-EXIT COOLDOWN: Waiting {rem}s after previous trade exit to avoid chop."
+
+        # 3. Daily Loss Circuit Breaker
         if realized_daily_pnl <= -abs(self.max_daily_loss):
             return False, f"CIRCUIT BREAKER: Daily loss limit (Rs. {abs(self.max_daily_loss):,.2f}) hit!"
 
-        # 2. Point 10: 15 Trades Per Day Hard Maximum Rule
+        # 4. Point 10: 15 Trades Per Day Hard Maximum Rule
         if total_daily_trades >= self.max_daily_trades:
             return False, f"CIRCUIT BREAKER: 15 Trades per day maximum limit reached ({self.max_daily_trades}). Overtrading prevention active."
 
-        # 3. Point 10: Consecutive Loss Protection Pause
+        # 5. Point 10: Consecutive Loss Protection Pause
         if consecutive_losses >= self.max_consecutive_losses and last_loss_timestamp > 0:
             elapsed = time.time() - last_loss_timestamp
             if elapsed < self.consecutive_loss_cooldown:
                 remaining = int(self.consecutive_loss_cooldown - elapsed)
                 return False, f"CONSECUTIVE LOSS PAUSE: {consecutive_losses} consecutive losses. Cooldown active for {remaining}s to protect capital."
 
-        # 4. Max Concurrent Scalping Positions (PDF Section 7: One-position-at-a-time)
+        # 6. Max Concurrent Scalping Positions (PDF Section 7: One-position-at-a-time)
         if current_open_positions_count >= self.max_positions:
             return False, f"Max concurrent scalping positions limit ({self.max_positions}) reached."
+
+        return True, "Risk checks passed."
 
         return True, "Risk checks passed."
 

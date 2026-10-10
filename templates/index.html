@@ -669,6 +669,8 @@
             <span class="badge-pill badge-scalp">🎯 10–15 PT SCALPER</span>
             <span class="badge-pill badge-groww" id="growwUccBadge">UCC: 6629599909</span>
             <span class="badge-pill badge-mode" id="botModeBadge">PAPER SIMULATION</span>
+            <span class="badge-pill" id="posStateBadge" style="background: rgba(139, 92, 246, 0.2); color: #c084fc; border: 1px solid rgba(139, 92, 246, 0.4); font-weight:700;">STATE: FLAT</span>
+            <span class="badge-pill" id="marketHoursBadge" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-weight:700;">SESSION: 09:15-15:30 IST</span>
             <span class="badge-pill" id="killSwitchBadge" style="display:none; background: rgba(239, 68, 68, 0.25); border: 1px solid #ef4444; color: #fca5a5; font-weight: 800; animation: glowRed 1.2s infinite;">🛑 KILL SWITCH ACTIVATED</span>
           </div>
           <p style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">
@@ -961,7 +963,13 @@
               <td style="color: var(--text-muted); font-size: 12px;" id="perfChargesDetail">Gross: Rs. 0.00 | Brokerage & Taxes: Rs. 0.00</td>
             </tr>
             <tr>
-              <td style="font-weight: 700;">5. Profit factor</td>
+              <td style="font-weight: 700;">5. Net NIFTY points</td>
+              <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
+              <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfNetNiftyPts">+0.0 Pts</td>
+              <td style="color: var(--text-muted); font-size: 12px;" id="perfNetNiftyPtsDetail">Cumulative index points captured</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700;">6. Profit factor</td>
               <td><span class="badge-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">Required</span></td>
               <td style="font-weight: 800; font-family: 'JetBrains Mono', monospace;" id="perfProfitFactor">0.00</td>
               <td style="color: var(--text-muted); font-size: 12px;">Gross Wins / Gross Losses</td>
@@ -1769,6 +1777,50 @@
         const grossPnl = p.gross_pnl_total || (p.realized_pnl || 0);
         const charges = p.total_charges_deducted || 0;
         document.getElementById('perfChargesDetail').textContent = `Gross P&L: Rs. ${Number(grossPnl).toLocaleString('en-IN', {minimumFractionDigits: 2})} | Brokerage & Taxes: Rs. ${Number(charges).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
+
+        // Net NIFTY points (PDF Section 13 & 15)
+        const netNiftyPts = p.net_nifty_points !== undefined ? p.net_nifty_points : 0.0;
+        const elNetNifty = document.getElementById('perfNetNiftyPts');
+        if (elNetNifty) {
+          elNetNifty.textContent = `${netNiftyPts >= 0 ? '+' : ''}${netNiftyPts.toFixed(1)} NIFTY Pts`;
+          elNetNifty.style.color = netNiftyPts >= 0 ? '#10b981' : '#ef4444';
+          document.getElementById('perfNetNiftyPtsDetail').textContent = `Cumulative Index Points Captured across ${p.total_trades_completed || 0} trades`;
+        }
+
+        // Position state & Market hours badges (PDF Section 11)
+        const posState = p.position_state || "FLAT";
+        const psBadge = document.getElementById('posStateBadge');
+        if (psBadge) {
+          psBadge.textContent = `STATE: ${posState}`;
+          if (posState.includes('LONG')) {
+            psBadge.style.background = 'rgba(16, 185, 129, 0.25)';
+            psBadge.style.color = '#34d399';
+            psBadge.style.borderColor = '#10b981';
+          } else if (posState.includes('SHORT')) {
+            psBadge.style.background = 'rgba(239, 68, 68, 0.25)';
+            psBadge.style.color = '#f87171';
+            psBadge.style.borderColor = '#ef4444';
+          } else {
+            psBadge.style.background = 'rgba(139, 92, 246, 0.2)';
+            psBadge.style.color = '#c084fc';
+            psBadge.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+          }
+        }
+
+        const mhBadge = document.getElementById('marketHoursBadge');
+        if (mhBadge) {
+          if (data.is_market_open) {
+            mhBadge.textContent = '🟢 NSE SESSION ACTIVE (09:15-15:30)';
+            mhBadge.style.background = 'rgba(16, 185, 129, 0.18)';
+            mhBadge.style.color = '#34d399';
+            mhBadge.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+          } else {
+            mhBadge.textContent = '🔴 NSE MARKET CLOSED';
+            mhBadge.style.background = 'rgba(239, 68, 68, 0.18)';
+            mhBadge.style.color = '#fca5a5';
+            mhBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          }
+        }
 
         const pf = p.profit_factor || 0;
         const perfPf = document.getElementById('perfProfitFactor');

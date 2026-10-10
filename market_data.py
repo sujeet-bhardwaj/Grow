@@ -108,6 +108,38 @@ class MarketDataEngine:
             lvl["s2"] = s2
 
     @staticmethod
+    def get_ist_now() -> datetime:
+        """Returns current time in Indian Standard Time (IST, UTC+5:30)."""
+        from datetime import timezone
+        ist_offset = timezone(timedelta(hours=5, minutes=30))
+        return datetime.now(ist_offset)
+
+    def is_market_open(self) -> tuple[bool, str]:
+        """
+        Market-hours filter per PDF 2 Section 11:
+        - Active only Monday to Friday (weekday 0 to 4)
+        - Active only between 09:15 AM and 15:30 PM IST
+        - Blocks trade entries outside market hours or on weekends
+        """
+        ist_now = self.get_ist_now()
+        weekday = ist_now.weekday()  # Monday = 0, Sunday = 6
+        current_t = ist_now.time()
+
+        if weekday >= 5:
+            day_name = "Saturday" if weekday == 5 else "Sunday"
+            return False, f"EXCHANGE CLOSED: Today is {day_name}. NSE is closed on weekends."
+
+        market_open_time = dt_time(9, 15)
+        market_close_time = dt_time(15, 30)
+
+        if current_t < market_open_time:
+            return False, f"PRE-MARKET: Current IST time is {current_t.strftime('%H:%M:%S')}. NSE opens at 09:15 AM."
+        elif current_t > market_close_time:
+            return False, f"POST-MARKET: Current IST time is {current_t.strftime('%H:%M:%S')}. NSE closed at 03:30 PM."
+
+        return True, "MARKET OPEN: Live exchange trading session active (09:15 - 15:30 IST)."
+
+    @staticmethod
     def calculate_vwap(df: pd.DataFrame) -> pd.Series:
         """
         Calculates intraday Volume Weighted Average Price (VWAP).

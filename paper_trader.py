@@ -21,6 +21,7 @@ class PaperTrader:
         self.consecutive_losses = 0
         self.max_consecutive_losses_record = 0
         self.last_loss_timestamp = 0.0
+        self.last_exit_timestamp = 0.0
 
     def open_trade(
         self,
@@ -124,6 +125,8 @@ class PaperTrader:
             self.last_loss_timestamp = time.time()
         else:
             self.consecutive_losses = 0
+
+        self.last_exit_timestamp = time.time()
 
         record = {
             "symbol": pos["symbol"],
@@ -295,6 +298,12 @@ class PaperTrader:
             "cooldown_remaining_sec": cooldown_remaining,
             "today_trades_count": len(today_trades),
             "trades_per_day": trades_per_day,
+            # Position State & Net NIFTY points (PDF Section 11 & 13)
+            "position_state": "FLAT" if not self.open_positions else f"{'LONG' if next(iter(self.open_positions.values())).get('option_type') == 'CE' else 'SHORT'} ({next(iter(self.open_positions.values())).get('symbol', '')})",
+            "net_nifty_points": round(sum(t.get("captured_index_pts", 0.0) for t in self.trade_history), 1),
+            "last_exit_timestamp": self.last_exit_timestamp,
+            "is_exit_cooldown_active": (time.time() - self.last_exit_timestamp < getattr(config, "POST_EXIT_COOLDOWN_SECONDS", 60)) if self.last_exit_timestamp > 0 else False,
+            "exit_cooldown_remaining_sec": max(0, int(getattr(config, "POST_EXIT_COOLDOWN_SECONDS", 60) - (time.time() - self.last_exit_timestamp))) if (self.last_exit_timestamp > 0 and (time.time() - self.last_exit_timestamp < getattr(config, "POST_EXIT_COOLDOWN_SECONDS", 60))) else 0,
             "max_daily_trades": getattr(config, "MAX_DAILY_TRADES", 15),
             "monthly_results": monthly_results,
             "equity_curve": equity_curve[-25:]  # Recent 25 points for curve

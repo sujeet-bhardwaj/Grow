@@ -272,6 +272,8 @@ shared_state = {
     "portfolio": initial_portfolio,
     "indices": get_initial_indices_snapshot(),
     "kill_switch_active": False,
+    "is_market_open": True,
+    "market_status_text": "Initializing session...",
     "open_positions": {},
     "trade_history": [],
     "activity_logs": [
@@ -303,12 +305,16 @@ def bot_worker_loop():
     print("[SCALP ENGINE] Starting background NIFTY / BANKNIFTY Scalping Loop (1m/5m, EMA 9/21/50, Levels, Delta, Absorption)...")
 
     cycle = 0
+    _recent_signal_cache = {}
 
     while True:
         try:
             cycle += 1
             indices_data = []
             current_premiums = {}
+
+            # Market-Hours Filter (PDF 2 Section 11)
+            is_mkt_open, mkt_status_msg = market_data.is_market_open()
 
             for idx in config.WATCHLIST_INDICES:
                 symbol = idx["symbol"]
@@ -404,14 +410,25 @@ def bot_worker_loop():
 
                 # 5. Handle CALL OPTION (CE) Setup
                 if signal == "BUY_CE" and not is_ce_active:
-                    allowed, risk_reason = risk_manager.can_open_position(
-                        current_open_positions_count=len(paper_trader.open_positions),
-                        realized_daily_pnl=paper_trader.realized_pnl,
-                        total_daily_trades=len(paper_trader.trade_history),
-                        consecutive_losses=paper_trader.consecutive_losses,
-                        last_loss_timestamp=paper_trader.last_loss_timestamp,
-                        kill_switch_active=shared_state.get("kill_switch_active", False)
-                    )
+                    sig_key = f"{symbol}_{signal}_{atm_strike}"
+                    is_dup = getattr(config, "PREVENT_DUPLICATE_SIGNALS", True) and (time.time() - _recent_signal_cache.get(sig_key, 0.0) < 120)
+
+                    if is_dup:
+                        allowed = False
+                        risk_reason = f"DUPLICATE SIGNAL FILTER: {sig_key} already triggered within 120s window."
+                    else:
+                        allowed, risk_reason = risk_manager.can_open_position(
+                            current_open_positions_count=len(paper_trader.open_positions),
+                            realized_daily_pnl=paper_trader.realized_pnl,
+                            total_daily_trades=len(paper_trader.trade_history),
+                            consecutive_losses=paper_trader.consecutive_losses,
+                            last_loss_timestamp=paper_trader.last_loss_timestamp,
+                            kill_switch_active=shared_state.get("kill_switch_active", False),
+                            last_exit_timestamp=paper_trader.last_exit_timestamp,
+                            market_hours_open=is_mkt_open,
+                            market_hours_reason=mkt_status_msg
+                        )
+
                     if allowed:
                         avail_funds = paper_trader.cash_balance if config.TRADING_MODE == "PAPER" else shared_state["portfolio"].get("cash_balance", 0.0)
                         
@@ -444,6 +461,7 @@ def bot_worker_loop():
                                 confluence_score=confluence
                             )
                             if placed:
+                                _recent_signal_cache[sig_key] = time.time()
                                 market_data.set_traded_today(symbol, True)
                                 add_log(
                                     f"BUY CALL (CE) — {analysis.get('strategy', 'ORB')}",
@@ -455,14 +473,25 @@ def bot_worker_loop():
 
                 # 6. Handle PUT OPTION (PE) Setup
                 elif signal == "BUY_PE" and not is_pe_active:
-                    allowed, risk_reason = risk_manager.can_open_position(
-                        current_open_positions_count=len(paper_trader.open_positions),
-                        realized_daily_pnl=paper_trader.realized_pnl,
-                        total_daily_trades=len(paper_trader.trade_history),
-                        consecutive_losses=paper_trader.consecutive_losses,
-                        last_loss_timestamp=paper_trader.last_loss_timestamp,
-                        kill_switch_active=shared_state.get("kill_switch_active", False)
-                    )
+                    sig_key = f"{symbol}_{signal}_{atm_strike}"
+                    is_dup = getattr(config, "PREVENT_DUPLICATE_SIGNALS", True) and (time.time() - _recent_signal_cache.get(sig_key, 0.0) < 120)
+
+                    if is_dup:
+                        allowed = False
+                        risk_reason = f"DUPLICATE SIGNAL FILTER: {sig_key} already triggered within 120s window."
+                    else:
+                        allowed, risk_reason = risk_manager.can_open_position(
+                            current_open_positions_count=len(paper_trader.open_positions),
+                            realized_daily_pnl=paper_trader.realized_pnl,
+                            total_daily_trades=len(paper_trader.trade_history),
+                            consecutive_losses=paper_trader.consecutive_losses,
+                            last_loss_timestamp=paper_trader.last_loss_timestamp,
+                            kill_switch_active=shared_state.get("kill_switch_active", False),
+                            last_exit_timestamp=paper_trader.last_exit_timestamp,
+                            market_hours_open=is_mkt_open,
+                            market_hours_reason=mkt_status_msg
+                        )
+
                     if allowed:
                         avail_funds = paper_trader.cash_balance if config.TRADING_MODE == "PAPER" else shared_state["portfolio"].get("cash_balance", 0.0)
                         
@@ -494,6 +523,7 @@ def bot_worker_loop():
                                 confluence_score=confluence
                             )
                             if placed:
+                                _recent_signal_cache[sig_key] = time.time()
                                 market_data.set_traded_today(symbol, True)
                                 add_log(
                                     f"BUY PUT (PE) — {analysis.get('strategy', 'ORB')}",
@@ -513,10 +543,13 @@ def bot_worker_loop():
 
             with state_lock:
                 shared_state["scan_cycle"] = cycle
+                shared_state["is_market_open"] = is_mkt_open
+                shared_state["market_status_text"] = mkt_status_msg
                 shared_state["portfolio"] = portfolio_summary
                 shared_state["indices"] = indices_data
                 shared_state["open_positions"] = open_positions_data
                 shared_state["trade_history"] = paper_trader.trade_history.copy()
+
 
         except Exception as e:
             import traceback
